@@ -10,6 +10,8 @@ import {
   insertUserInfoApiResponse,
   insertUserInfoRequest,
   insertUserInfoResponse,
+  insertWishApiRequest,
+  insertWishApiResponse,
   loginAuthApiRequest,
   loginAuthApiResponse,
   refreshTokenAuthApiRequest,
@@ -95,6 +97,50 @@ app.post(
           result: { ...response },
         });
       }
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/insertUser",
+  async (req: insertUserInfoApiRequest, res: insertUserInfoApiResponse) => {
+    try {
+      const updateObj = req.body;
+      const result = await neonApi.insertUserInfo(updateObj);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+
+app.post(
+  "/api/v1/post/insertWish",
+  async (req: insertWishApiRequest, res: insertWishApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.insertWish(left);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result,
+      });
       return;
     } catch (error: any) {
       res.status(500).json({

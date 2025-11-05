@@ -4,8 +4,12 @@ import {
   accessTokenAuthRequest,
   accessTokenAuthResponse,
   insertUserInfoRequest,
+  insertWishRequest,
   loginAuthRequest,
+  ParticipationSchema,
+  ParticipationSchemaType,
   refreshTokenAuthRequest,
+  schemaType,
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
@@ -260,6 +264,117 @@ export class NeonApi {
           message: "ユーザー登録に失敗しました。",
         };
       }
+      await this.pool.query("COMMIT");
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
+  }
+  public async insertWish(wish: Omit<insertWishRequest, "userInfo">) {
+    // レスポンス内容(初期値)
+    let response = { id: "" };
+    await this.pool.query("BEGIN");
+    try {
+      // いんんさーとを行う
+      const { participationConfirmSchema, postConfirmSchema, ...leftWish } =
+        wish;
+
+      const { rows: insertWishRows } = await this.pool.query(
+        `INSERT INTO public.shitai_wish ("groupId", "creatorId", "category", "imageData", title, "displayDate", "displayText", notes, deadline, "minParticipants", "maxParticipants", "actionLabel", withdrawn, "createdAt", "participationConfirmSchemaType", "postConfirmSchemaType") 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15) RETURNING id;`,
+        [
+          leftWish.groupId,
+          leftWish.creatorId,
+          leftWish.category,
+          leftWish.imageData,
+          leftWish.title,
+          leftWish.displayDate,
+          leftWish.displayText,
+          leftWish.notes,
+          leftWish.deadline,
+          leftWish.minParticipants,
+          leftWish.maxParticipants,
+          leftWish.actionLabel,
+          false,
+          participationConfirmSchema.type,
+          postConfirmSchema.type,
+        ]
+      );
+      if (insertWishRows.length !== 1) {
+        throw {
+          message: "したいことの登録に失敗しました。",
+        };
+      }
+
+      const createInsertSchema = (
+        schema: ParticipationSchema,
+        schemaType: schemaType
+      ) => {
+        let arr: {
+          schemaType: schemaType;
+          type: Omit<ParticipationSchemaType, "none" | "mixed">;
+          label?: string;
+          required?: boolean;
+        }[] = [];
+        switch (schema.type) {
+          case "mixed":
+            arr.push({
+              schemaType,
+              type: "datetime",
+              label: schema.datetimeLabel,
+              required: schema.datetimeRequired,
+            });
+            arr.push({
+              schemaType,
+              type: "note",
+              label: schema.noteLabel,
+              required: schema.noteRequired,
+            });
+            break;
+          case "datetime":
+            arr.push({
+              schemaType,
+              type: "datetime",
+              label: schema.datetimeLabel,
+              required: schema.datetimeRequired,
+            });
+            break;
+          case "note":
+            arr.push({
+              schemaType,
+              type: "note",
+              label: schema.noteLabel,
+              required: schema.noteRequired,
+            });
+            break;
+          default:
+            break;
+        }
+        return arr;
+      };
+      for (const schema of [
+        ...createInsertSchema(participationConfirmSchema, "participation"),
+        ...createInsertSchema(postConfirmSchema, "post"),
+      ]) {
+        const { rows: insertRows } = await this.pool.query(
+          `INSERT INTO "public"."shitai_schema" ("wishId", "schemaType", "type", "required", "label")
+          VALUES($1, $2, $3, $4, $5) RETURNING id;`,
+          [
+            insertWishRows[0]["id"],
+            schema.schemaType,
+            schema.type,
+            schema.required,
+            schema.label,
+          ]
+        );
+        if (insertRows.length !== 1) {
+          throw {
+            message: "確認項目の登録に失敗しました。",
+          };
+        }
+      }
+      response.id = insertWishRows[0]["id"];
       await this.pool.query("COMMIT");
     } catch (e) {
       await this.pool.query("ROLLBACK");
