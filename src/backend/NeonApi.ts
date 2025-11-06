@@ -3,13 +3,16 @@ import {
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
   accessTokenAuthResponse,
+  getWishByIdRequest,
   insertUserInfoRequest,
   insertWishRequest,
   loginAuthRequest,
+  Participant,
   ParticipationSchema,
   ParticipationSchemaType,
   refreshTokenAuthRequest,
   schemaType,
+  Wish,
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
@@ -30,7 +33,24 @@ export class NeonApi {
     expiresIn: "1H",
     algorithm: "HS256",
   } as const;
-
+  private columns = [
+    "groupId",
+    "creatorId",
+    "category",
+    "imageData",
+    "title",
+    "displayDate",
+    "displayText",
+    "notes",
+    "deadline",
+    "minParticipants",
+    "maxParticipants",
+    "actionLabel",
+    "withdrawn",
+    "createdAt",
+    "participationConfirmSchemaType",
+    "postConfirmSchemaType",
+  ] as const;
   private createTokens(id: number) {
     const response = { accessToken: "", refreshToken: "" };
     // アクセストークン作成
@@ -271,7 +291,10 @@ export class NeonApi {
     }
     return response;
   }
-  public async insertWish(wish: Omit<insertWishRequest, "userInfo">) {
+  public async insertWish(
+    wish: Omit<insertWishRequest, "userInfo">,
+    id: number
+  ) {
     // レスポンス内容(初期値)
     let response = { id: "" };
     await this.pool.query("BEGIN");
@@ -279,9 +302,17 @@ export class NeonApi {
       // いんんさーとを行う
       const { participationConfirmSchema, postConfirmSchema, ...leftWish } =
         wish;
-
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.groupId FROM public.shitai_group as sg INNER JOIN public.shitai_join_group as sjg ON sjg.groupId = sg.groupId AND sjg.userId = $1 WHERE sg.groupId = $2;`,
+        [id, leftWish.groupId]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
       const { rows: insertWishRows } = await this.pool.query(
-        `INSERT INTO public.shitai_wish ("groupId", "creatorId", "category", "imageData", title, "displayDate", "displayText", notes, deadline, "minParticipants", "maxParticipants", "actionLabel", withdrawn, "createdAt", "participationConfirmSchemaType", "postConfirmSchemaType") 
+        `INSERT INTO public.shitai_wish (${this.columns.join(",")}) 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15) RETURNING id;`,
         [
           leftWish.groupId,
@@ -368,7 +399,7 @@ export class NeonApi {
             schema.label,
           ]
         );
-        if (insertRows.length !== 1) {
+        if (insertRows.length === 0) {
           throw {
             message: "確認項目の登録に失敗しました。",
           };
@@ -381,5 +412,150 @@ export class NeonApi {
       throw e;
     }
     return response;
+  }
+  private async createResponseData(wishId: string) {
+    try {
+      const { rows: schemaRows } = await this.pool.query(
+        `SELECT sw.participationConfirmSchemaType, sw.postConfirmSchemaType, ss.schemaType, ss.type, ss.required, ss.label
+        FROM public.shitai_wish as sw INNER JOIN shitai_schema as ss ON ss.wishId = sw.id WHERE sw.id = $1;`,
+        [wishId]
+      );
+      if (schemaRows.length === 0) {
+        throw {
+          message: "スキーマの取得に失敗しました。",
+        };
+      }
+      const schemaMap = new Map<schemaType, ParticipationSchema>();
+      for (const schema of schemaRows) {
+        const {
+          participationConfirmSchemaType,
+          postConfirmSchemaType,
+          schemaType,
+          type,
+          required,
+          label,
+        } = schema;
+        schemaMap.set(schemaType, {
+          ...schemaMap.get(schemaType),
+          type:
+            (schemaType as schemaType) === "participation"
+              ? participationConfirmSchemaType
+              : postConfirmSchemaType,
+          [type + "Label"]: label,
+          [type + "Required"]: required,
+        });
+      }
+
+      const { rows: answerRows } = await this.pool.query(
+        `SELECT sj.joinedAt, sa.userId, sa.schemaType, sa.type, sa.value
+        FROM shitai_schema as ss INNER JOIN public.shitai_answer as sa ON sa.schemaId = ss.id INNER JOIN shitai_join as sj ON sj.userId = sa.userid WHERE ss.wishId = $1;`,
+        [wishId]
+      );
+      if (answerRows.length === 0) {
+        throw {
+          message: "アンサーの取得に失敗しました。",
+        };
+      }
+      const answerMap = new Map<string, Participant>();
+      for (const answer of answerRows) {
+        const { joinedAt, userId, schemaType, type, value } = answer;
+        answerMap.set(userId, {
+          ...(answerMap.get(userId) ? answerMap.get(userId) : {}),
+          userId,
+          joinedAt,
+          [schemaType + "Answers"]: {
+            ...(answerMap.get(userId)
+              ? schemaType + "Answers" in (answerMap.get(userId) as Participant)
+                ? ((answerMap.get(userId) as Participant)[
+                    (schemaType + "Answers") as
+                      | "participationAnswers"
+                      | "postAnswers"
+                  ] as { datetime: string; note: string })
+                : {}
+              : {}),
+            [type]: value,
+          },
+        });
+        const participants: Participant[] = [...answerMap.values()];
+        return {
+          participationConfirmSchema: schemaMap.get("participation"),
+          postConfirmSchema: schemaMap.get("post"),
+          participants,
+        };
+      }
+    } catch (e) {
+      throw e;
+    }
+  }
+  public async getWishById(
+    wish: Omit<getWishByIdRequest, "userInfo">,
+    id: number
+  ) {
+    // レスポンス内容(初期値)
+    let response: Wish = {
+      id: "",
+      groupId: "",
+      creatorId: "",
+      category: "",
+      title: "",
+      minParticipants: 0,
+      actionLabel: "",
+      participationConfirmSchema: { type: "none" },
+      postConfirmSchema: { type: "none" },
+      participants: [],
+      withdrawn: false,
+      createdAt: "",
+    };
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.groupId FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw.groupId = sg.groupId INNER JOIN public.shitai_join_group as sjg ON sjg.groupId = sg.groupId AND sjg.userId = $1 WHERE sw.id = $2;`,
+        [wish.id, id]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+
+      const { rows: wishRows } = await this.pool.query(
+        `SELECT ${this.columns.join(",")}
+        FROM public.shitai_wish WHERE id = $1;`,
+        [wish.id]
+      );
+      if (wishRows.length !== 1) {
+        throw {
+          message: "したいことの取得に失敗しました。",
+        };
+      }
+      const res = await this.createResponseData(wish.id);
+      let extColumns = this.columns.filter(
+        (col) =>
+          col !== "participationConfirmSchemaType" &&
+          col !== "postConfirmSchemaType"
+      );
+      extColumns.forEach((column) => {
+        const value = wishRows["0"][column];
+        if (value && column in response) {
+          response = { ...response, [column]: value };
+        }
+      });
+      (
+        [
+          "participationConfirmSchema",
+          "postConfirmSchema",
+          "participants",
+        ] as const
+      ).forEach((column) => {
+        if (res && column in res) {
+          response = {
+            ...response,
+            [column]: res[column],
+          };
+        }
+      });
+      return response;
+    } catch (e) {
+      throw e;
+    }
   }
 }

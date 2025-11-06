@@ -6,6 +6,8 @@ import {
   accessTokenAuthApiRequest,
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
+  getWishByIdApiRequest,
+  getWishByIdApiResponse,
   insertUserInfoApiRequest,
   insertUserInfoApiResponse,
   insertUserInfoRequest,
@@ -135,11 +137,33 @@ app.post(
     try {
       const { userInfo, ...left } = req.body;
       const { id: userId } = await initAccessTokenAuth(userInfo);
-      const result = await neonApi.insertWish(left);
+      const result = await neonApi.insertWish(left, userInfo.id);
       // ユーザー情報とトークンをクライアントに返す
       res.status(200).json({
         status: 200, // ステータスコード
         result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/get/wishById",
+  async (req: getWishByIdApiRequest, res: getWishByIdApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.getWishById(left, userInfo.id);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: { wish: result },
       });
       return;
     } catch (error: any) {
