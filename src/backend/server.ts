@@ -8,6 +8,8 @@ import {
   accessTokenAuthRequest,
   getWishByIdApiRequest,
   getWishByIdApiResponse,
+  insertAnswerApiRequest,
+  insertAnswerApiResponse,
   insertUserInfoApiRequest,
   insertUserInfoApiResponse,
   insertUserInfoRequest,
@@ -164,6 +166,32 @@ app.post(
       res.status(200).json({
         status: 200, // ステータスコード
         result: { wish: result },
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/insertAnswer",
+  async (req: insertAnswerApiRequest, res: insertAnswerApiResponse) => {
+    try {
+      const { userInfo, id, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.insertAnswer(
+        left,
+        Number(userId),
+        Number(id)
+      );
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: result,
       });
       return;
     } catch (error: any) {

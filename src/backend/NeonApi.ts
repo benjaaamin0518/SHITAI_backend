@@ -3,7 +3,9 @@ import {
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
   accessTokenAuthResponse,
+  answer,
   getWishByIdRequest,
+  insertAnswerRequest,
   insertUserInfoRequest,
   insertWishRequest,
   loginAuthRequest,
@@ -455,7 +457,7 @@ export class NeonApi {
       }
 
       const { rows: answerRows } = await this.pool.query(
-        `SELECT sj."joinedAt", sa."userId", ss."schemaType", sa.type, sa.value
+        `SELECT sj."joinedAt", sa."userId", ss."schemaType", ss.type, sa.value
         FROM shitai_join as sj LEFT JOIN shitai_schema as ss ON ss."wishId" = $1 LEFT JOIN public.shitai_answer as sa ON sa."schemaId" = ss.id AND ss."wishId" = $1 WHERE sj."wishId" = $1 ORDER BY sj."joinedAt" ASC;`,
         [wishId]
       );
@@ -572,5 +574,68 @@ export class NeonApi {
     } catch (e) {
       throw e;
     }
+  }
+  public async insertAnswer(
+    answer: Omit<insertAnswerRequest, "userInfo">,
+    id: number,
+    wishId: number
+  ) {
+    // レスポンス内容(初期値)
+    let response: "success" | "error" = "success";
+    await this.pool.query("BEGIN");
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        [id, wishId]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+      // いんんさーとを行う
+      for (const key of Object.keys(answer)) {
+        for (const schema of Object.keys(
+          answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer
+        )) {
+          const repKey = key.replace("Answers", "");
+          console.log([
+            id,
+            (
+              answer[
+                key as keyof Omit<insertAnswerRequest, "userInfo">
+              ] as answer
+            )[schema as keyof answer],
+            repKey,
+            schema,
+            wishId,
+          ]);
+          const { rows: insertAnswerRows } = await this.pool.query(
+            `INSERT INTO public.shitai_answer ("userId", "schemaId", "value") SELECT $1, ss.id, $2 FROM public.shitai_schema as ss WHERE ss."schemaType" = $3 AND ss."type" = $4 AND ss."wishId" = $5 LIMIT 1 RETURNING id`,
+            [
+              id,
+              (
+                answer[
+                  key as keyof Omit<insertAnswerRequest, "userInfo">
+                ] as answer
+              )[schema as keyof answer],
+              repKey,
+              schema,
+              wishId,
+            ]
+          );
+          if (insertAnswerRows.length !== 1) {
+            throw {
+              message: "アンサーの登録に失敗しました。",
+            };
+          }
+        }
+      }
+      await this.pool.query("COMMIT");
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
   }
 }
