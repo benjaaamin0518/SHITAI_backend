@@ -163,3 +163,30 @@ export type insertAnswerResponse =
     }
   | { error: string; status: number };
 export type insertAnswerApiResponse = Response<insertAnswerResponse>;
+export type updateWishRequest = accessTokenAuthRequest &
+  Omit<
+    Wish,
+    | "participationConfirmSchema"
+    | "postConfirmSchema"
+    | "participants"
+    | "withdrawn"
+    | "createdAt"
+  >;
+
+export type updateWishApiRequest = Request<updateWishRequest>;
+export type updateWishResponse =
+  | {
+      result: string;
+      status: number;
+    }
+  | { error: string; status: number };
+export type updateWishApiResponse = Response<updateWishResponse>;
+export type getWishesRequest = accessTokenAuthRequest & Pick<Group, "id">;
+export type getWishesApiRequest = Request<getWishesRequest>;
+export type getWishesResponse =
+  | {
+      result: { wishes: Wish[] };
+      status: number;
+    }
+  | { error: string; status: number };
+export type getWishesApiResponse = Response<getWishesResponse>;

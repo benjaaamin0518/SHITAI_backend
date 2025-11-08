@@ -5,6 +5,8 @@ import {
   accessTokenAuthResponse,
   answer,
   getWishByIdRequest,
+  getWishesApiRequest,
+  getWishesRequest,
   insertAnswerRequest,
   insertUserInfoRequest,
   insertWishRequest,
@@ -14,6 +16,7 @@ import {
   ParticipationSchemaType,
   refreshTokenAuthRequest,
   schemaType,
+  updateWishRequest,
   Wish,
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
@@ -637,5 +640,143 @@ export class NeonApi {
       throw e;
     }
     return response;
+  }
+  public async updateWish(
+    wish: Omit<updateWishRequest, "userInfo">,
+    id: number
+  ) {
+    // レスポンス内容(初期値)
+    let response: "success" | "error" = "success";
+    await this.pool.query("BEGIN");
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        [id, wish.id]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+      const { id: wishId, ...updateWish } = wish;
+      console.log(
+        `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
+          (prev, current) => {
+            const str =
+              `"${current}"` +
+              " = " +
+              `'${
+                updateWish[
+                  current as keyof Omit<updateWishRequest, "userInfo" | "id">
+                ]
+              }'`;
+            return prev !== "" ? prev + ", " + str : str;
+          },
+          ""
+        )} WHERE id = $1 RETURNING id;`
+      );
+      const { rows: updateRows } = await this.pool.query(
+        `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
+          (prev, current) => {
+            const str =
+              `"${current}"` +
+              " = " +
+              `'${
+                updateWish[
+                  current as keyof Omit<updateWishRequest, "userInfo" | "id">
+                ]
+              }'`;
+            return prev !== "" ? prev + ", " + str : str;
+          },
+          ""
+        )} WHERE id = $1 RETURNING id;`,
+        [wish.id]
+      );
+      if (updateRows.length === 0) {
+        throw {
+          message: "したいことの更新に失敗しました。",
+        };
+      }
+      await this.pool.query("COMMIT");
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
+  }
+  public async getWishes(groupId: number, id: number) {
+    // レスポンス内容(初期値)
+    let response: Wish[] = [];
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg."id" = $2;`,
+        [id, groupId]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+
+      const { rows: wishRows } = await this.pool.query(
+        `SELECT id, ${this.columns.join(",")}
+        FROM public.shitai_wish ORDER BY id ASC;`,
+        []
+      );
+      if (wishRows.length === 0) {
+        throw {
+          message: "したいことの取得に失敗しました。",
+        };
+      }
+      for (const wish of wishRows) {
+        let resWish: Wish = {
+          id: wish.id,
+          groupId: "",
+          creatorId: "",
+          category: "",
+          title: "",
+          minParticipants: 0,
+          actionLabel: "",
+          participationConfirmSchema: { type: "none" },
+          postConfirmSchema: { type: "none" },
+          participants: [],
+          withdrawn: false,
+          createdAt: "",
+        };
+        console.log(wish["id"], wish);
+        const res = await this.createResponseData(wish.id);
+        let extColumns = this.columns.filter(
+          (col) =>
+            col !== '"participationConfirmSchemaType"' &&
+            col !== '"postConfirmSchemaType"'
+        );
+        extColumns.forEach((column) => {
+          const repColumn = column.replaceAll('"', "");
+          console.log(repColumn);
+          const value = wish[repColumn];
+          if (value) {
+            resWish = { ...resWish, [repColumn]: value };
+          }
+        });
+        (
+          [
+            "participationConfirmSchema",
+            "postConfirmSchema",
+            "participants",
+          ] as const
+        ).forEach((column) => {
+          if (res && column in res) {
+            resWish = {
+              ...resWish,
+              [column]: res[column],
+            };
+          }
+        });
+        response.push(resWish);
+      }
+      return response;
+    } catch (e) {
+      throw e;
+    }
   }
 }

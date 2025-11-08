@@ -8,6 +8,8 @@ import {
   accessTokenAuthRequest,
   getWishByIdApiRequest,
   getWishByIdApiResponse,
+  getWishesApiRequest,
+  getWishesApiResponse,
   insertAnswerApiRequest,
   insertAnswerApiResponse,
   insertUserInfoApiRequest,
@@ -20,6 +22,8 @@ import {
   loginAuthApiResponse,
   refreshTokenAuthApiRequest,
   refreshTokenAuthApiResponse,
+  updateWishApiRequest,
+  updateWishApiResponse,
 } from "../type/NeonApiInterface";
 const app = express();
 const neonApi = new NeonApi();
@@ -181,17 +185,57 @@ app.post(
   "/api/v1/post/insertAnswer",
   async (req: insertAnswerApiRequest, res: insertAnswerApiResponse) => {
     try {
-      const { userInfo, id, ...left } = req.body;
+      const { userInfo, ...left } = req.body;
       const { id: userId } = await initAccessTokenAuth(userInfo);
-      const result = await neonApi.insertAnswer(
-        left,
-        Number(userId),
-        Number(id)
-      );
+      const result = await neonApi.updateWish(left, Number(userId));
       // ユーザー情報とトークンをクライアントに返す
       res.status(200).json({
         status: 200, // ステータスコード
         result: result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/updateWish",
+  async (req: updateWishApiRequest, res: updateWishApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.updateWish(left, Number(userId));
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/get/wishes",
+  async (req: getWishesApiRequest, res: getWishesApiResponse) => {
+    try {
+      const { userInfo, id } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.getWishes(Number(id), Number(userId));
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: { wishes: result },
       });
       return;
     } catch (error: any) {
