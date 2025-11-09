@@ -7,6 +7,7 @@ import {
   getWishByIdRequest,
   getWishesApiRequest,
   getWishesRequest,
+  Group,
   insertAnswerRequest,
   insertUserInfoRequest,
   insertWishRequest,
@@ -773,6 +774,51 @@ export class NeonApi {
           }
         });
         response.push(resWish);
+      }
+      return response;
+    } catch (e) {
+      throw e;
+    }
+  }
+  public async getGroups(id: number) {
+    // レスポンス内容(初期値)
+    let response: Group[] = [];
+    try {
+      const { rows: joinGroupRows } = await this.pool.query(
+        `SELECT sg.id, sg."groupName"
+        FROM public.shitai_group_join as sgj INNER JOIN shitai_group as sg ON sg.id = sgj."groupId" WHERE sgj."userId" = $1;`,
+        [id]
+      );
+      if (joinGroupRows.length === 0) {
+        throw {
+          message: "参加グループの取得に失敗しました。",
+        };
+      }
+      for (const group of joinGroupRows) {
+        const groupObj: Group = {
+          id: group["id"],
+          name: group["groupName"],
+          members: [],
+        };
+        //メンバー情報を取得する。
+        const { rows: joinMemberRows } = await this.pool.query(
+          `SELECT DISTINCT sui.id, sui.user_name, sui.user_id
+        FROM public.shitai_group_join as sgj INNER JOIN shitai_user_info as sui ON sui.id = sgj."userId" WHERE sgj."groupId" = $1;`,
+          [group["id"]]
+        );
+        if (joinMemberRows.length === 0) {
+          throw {
+            message: "メンバー情報の取得に失敗しました。",
+          };
+        }
+        groupObj.members = joinMemberRows.map((member) => {
+          return {
+            id: member["id"],
+            name: member["user_name"],
+            email: member["user_id"],
+          };
+        });
+        response.push(groupObj);
       }
       return response;
     } catch (e) {

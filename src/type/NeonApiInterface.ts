@@ -4,14 +4,12 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  avatarUrl?: string;
 }
 
 export interface Group {
   id: string;
   name: string;
   members: User[];
-  createdAt: string;
 }
 
 export interface Participant {
@@ -190,3 +188,13 @@ export type getWishesResponse =
     }
   | { error: string; status: number };
 export type getWishesApiResponse = Response<getWishesResponse>;
+
+export type getGruopsRequest = accessTokenAuthRequest;
+export type getGruopsApiRequest = Request<getGruopsRequest>;
+export type getGruopsResponse =
+  | {
+      result: { groups: Group[] };
+      status: number;
+    }
+  | { error: string; status: number };
+export type getGruopsApiResponse = Response<getGruopsResponse>;

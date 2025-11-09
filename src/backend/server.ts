@@ -6,6 +6,8 @@ import {
   accessTokenAuthApiRequest,
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
+  getGruopsApiRequest,
+  getGruopsApiResponse,
   getWishByIdApiRequest,
   getWishByIdApiResponse,
   getWishesApiRequest,
@@ -236,6 +238,28 @@ app.post(
       res.status(200).json({
         status: 200, // ステータスコード
         result: { wishes: result },
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/get/groups",
+  async (req: getGruopsApiRequest, res: getGruopsApiResponse) => {
+    try {
+      const { userInfo } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.getGroups(Number(userId));
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: { groups: result },
       });
       return;
     } catch (error: any) {
