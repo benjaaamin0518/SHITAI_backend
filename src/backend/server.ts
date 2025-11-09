@@ -6,6 +6,9 @@ import {
   accessTokenAuthApiRequest,
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
+  insertGroupApiRequest,
+  insertGroupApiResponse,
+  insertGroupRequest,
   getGruopsApiRequest,
   getGruopsApiResponse,
   getWishByIdApiRequest,
@@ -26,6 +29,11 @@ import {
   refreshTokenAuthApiResponse,
   updateWishApiRequest,
   updateWishApiResponse,
+  joinWishApiRequest,
+  joinWishResponse,
+  joinWishApiResponse,
+  invitationGroupApiRequest,
+  invitationGroupApiResponse,
 } from "../type/NeonApiInterface";
 const app = express();
 const neonApi = new NeonApi();
@@ -260,6 +268,72 @@ app.post(
       res.status(200).json({
         status: 200, // ステータスコード
         result: { groups: result },
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/insertGroup",
+  async (req: insertGroupApiRequest, res: insertGroupApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.insertGroup(Number(userId), left);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/invitationGroup",
+  async (req: invitationGroupApiRequest, res: invitationGroupApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.invitationGroup(Number(userId), left);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: result,
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/joinWish",
+  async (req: joinWishApiRequest, res: joinWishApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.joinWish(Number(userId), left);
+      // ユーザー情報とトークンをクライアントに返す
+      res.status(200).json({
+        status: 200, // ステータスコード
+        result: result,
       });
       return;
     } catch (error: any) {

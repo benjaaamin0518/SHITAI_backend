@@ -35,6 +35,7 @@ export interface Wish {
   creatorId: string;
   category: string;
   imageData?: string;
+  implementationDatetime?: string;
   title: string;
   displayDate?: string;
   displayText?: string;
@@ -57,6 +58,7 @@ export interface WishFormData {
   title: string;
   displayDate?: string;
   displayText?: string;
+  implementationDatetime?: string;
   notes?: string;
   deadline?: string;
   minParticipants: number;
@@ -198,3 +200,38 @@ export type getGruopsResponse =
     }
   | { error: string; status: number };
 export type getGruopsApiResponse = Response<getGruopsResponse>;
+
+export type insertGroupRequest = accessTokenAuthRequest & Pick<Group, "name">;
+export type insertGroupApiRequest = Request<insertGroupRequest>;
+export type insertGroupResponse =
+  | {
+      result: { id: string };
+      status: number;
+    }
+  | { error: string; status: number };
+export type insertGroupApiResponse = Response<insertGroupResponse>;
+
+export type invitationGroupRequest = accessTokenAuthRequest & {
+  invitationUserId: string;
+  groupId: string;
+};
+export type invitationGroupApiRequest = Request<invitationGroupRequest>;
+export type invitationGroupResponse =
+  | {
+      result: string;
+      status: number;
+    }
+  | { error: string; status: number };
+export type invitationGroupApiResponse = Response<invitationGroupResponse>;
+
+export type joinWishRequest = accessTokenAuthRequest & {
+  wishId: string;
+};
+export type joinWishApiRequest = Request<joinWishRequest>;
+export type joinWishResponse =
+  | {
+      result: string;
+      status: number;
+    }
+  | { error: string; status: number };
+export type joinWishApiResponse = Response<joinWishResponse>;

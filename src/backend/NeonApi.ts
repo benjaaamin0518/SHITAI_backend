@@ -4,6 +4,7 @@ import {
   accessTokenAuthRequest,
   accessTokenAuthResponse,
   answer,
+  insertGroupRequest,
   getWishByIdRequest,
   getWishesApiRequest,
   getWishesRequest,
@@ -19,6 +20,8 @@ import {
   schemaType,
   updateWishRequest,
   Wish,
+  invitationGroupRequest,
+  joinWishRequest,
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
@@ -56,6 +59,7 @@ export class NeonApi {
     '"createdAt"',
     '"participationConfirmSchemaType"',
     '"postConfirmSchemaType"',
+    '"implementationDatetime"',
   ] as const;
   private createTokens(id: number) {
     const response = { accessToken: "", refreshToken: "" };
@@ -824,5 +828,128 @@ export class NeonApi {
     } catch (e) {
       throw e;
     }
+  }
+  public async insertGroup(
+    id: number,
+    group: Omit<insertGroupRequest, "userInfo">
+  ) {
+    // レスポンス内容(初期値)
+    let response = { id: "" };
+    await this.pool.query("BEGIN");
+    try {
+      // いんんさーとを行う
+      const { rows: insertRows } = await this.pool.query(
+        `INSERT INTO shitai_group ("groupName")
+          VALUES($1) RETURNING id;`,
+        [group.name]
+      );
+      if (insertRows.length !== 1) {
+        throw {
+          message: "グループ登録に失敗しました。",
+        };
+      }
+      const { rows: insertJoinRows } = await this.pool.query(
+        `INSERT INTO shitai_group_join ("groupId", "userId")
+          VALUES($1, $2) RETURNING id;`,
+        [insertRows[0]["id"], id]
+      );
+      if (insertJoinRows.length !== 1) {
+        throw {
+          message: "グループ参加登録に失敗しました。",
+        };
+      }
+      await this.pool.query("COMMIT");
+      response.id = insertRows[0]["id"];
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
+  }
+  public async invitationGroup(
+    id: number,
+    { invitationUserId, groupId }: Omit<invitationGroupRequest, "userInfo">
+  ) {
+    // レスポンス内容(初期値)
+    let response: "success" | "error" = "success";
+    await this.pool.query("BEGIN");
+    try {
+      // いんんさーとを行う
+      const { rows: userRows } = await this.pool.query(
+        `SELECT id FROM shitai_user_info WHERE user_id = $1`,
+        [invitationUserId]
+      );
+      if (userRows.length !== 1) {
+        throw {
+          message: "ユーザー情報取得に失敗しました。",
+        };
+      }
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT id FROM shitai_group_join WHERE "userId" = $1 AND "groupId" = $2`,
+        [userRows[0]["id"], groupId]
+      );
+      if (groupRows.length !== 0) {
+        throw {
+          message: "すでに参加しているグループです。",
+        };
+      }
+      const { rows: insertRows } = await this.pool.query(
+        `INSERT INTO shitai_group_join ("groupId", "userId") VALUES ($1, $2) RETURNING id;`,
+        [groupId, userRows[0]["id"]]
+      );
+      if (insertRows.length !== 1) {
+        throw {
+          message: "グループジョイン登録に失敗しました。",
+        };
+      }
+      await this.pool.query("COMMIT");
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
+  }
+  public async joinWish(
+    id: number,
+    { wishId }: Omit<joinWishRequest, "userInfo">
+  ) {
+    // レスポンス内容(初期値)
+    let response: "success" | "error" = "success";
+    await this.pool.query("BEGIN");
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        [id, wishId]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+      const { rows: wishRows } = await this.pool.query(
+        `SELECT id FROM shitai_join WHERE "userId" = $1 AND "wishId" = $2;`,
+        [id, wishId]
+      );
+      if (wishRows.length !== 0) {
+        throw {
+          message: "すでにしたいことに参加済みです。",
+        };
+      }
+      // いんんさーとを行う
+      const { rows: joinWishRows } = await this.pool.query(
+        `INSERT INTO shitai_join ("userId", "joinedAt", "wishId") VALUES ($1, NOW(), $2) RETURNING id`,
+        [id, wishId]
+      );
+      if (joinWishRows.length !== 1) {
+        throw {
+          message: "したいこと参加登録に失敗しました。",
+        };
+      }
+      await this.pool.query("COMMIT");
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
+      throw e;
+    }
+    return response;
   }
 }
