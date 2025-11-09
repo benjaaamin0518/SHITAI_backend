@@ -790,7 +790,7 @@ export class NeonApi {
     try {
       const { rows: joinGroupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName"
-        FROM public.shitai_group_join as sgj INNER JOIN shitai_group as sg ON sg.id = sgj."groupId" WHERE sgj."userId" = $1;`,
+        FROM public.shitai_group_join as sgj INNER JOIN shitai_group as sg ON sg.id = sgj."groupId" WHERE sgj."userId" = $1 ORDER BY sg.id ASC;`,
         [id]
       );
       if (joinGroupRows.length === 0) {

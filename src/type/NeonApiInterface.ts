@@ -191,15 +191,15 @@ export type getWishesResponse =
   | { error: string; status: number };
 export type getWishesApiResponse = Response<getWishesResponse>;
 
-export type getGruopsRequest = accessTokenAuthRequest;
-export type getGruopsApiRequest = Request<getGruopsRequest>;
-export type getGruopsResponse =
+export type getGroupsRequest = accessTokenAuthRequest;
+export type getGroupsApiRequest = Request<getGroupsRequest>;
+export type getGroupsResponse =
   | {
       result: { groups: Group[] };
       status: number;
     }
   | { error: string; status: number };
-export type getGruopsApiResponse = Response<getGruopsResponse>;
+export type getGroupsApiResponse = Response<getGroupsResponse>;
 
 export type insertGroupRequest = accessTokenAuthRequest & Pick<Group, "name">;
 export type insertGroupApiRequest = Request<insertGroupRequest>;

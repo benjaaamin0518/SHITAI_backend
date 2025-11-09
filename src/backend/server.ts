@@ -9,8 +9,8 @@ import {
   insertGroupApiRequest,
   insertGroupApiResponse,
   insertGroupRequest,
-  getGruopsApiRequest,
-  getGruopsApiResponse,
+  getGroupsApiRequest,
+  getGroupsApiResponse,
   getWishByIdApiRequest,
   getWishByIdApiResponse,
   getWishesApiRequest,
@@ -259,7 +259,7 @@ app.post(
 );
 app.post(
   "/api/v1/get/groups",
-  async (req: getGruopsApiRequest, res: getGruopsApiResponse) => {
+  async (req: getGroupsApiRequest, res: getGroupsApiResponse) => {
     try {
       const { userInfo } = req.body;
       const { id: userId } = await initAccessTokenAuth(userInfo);
