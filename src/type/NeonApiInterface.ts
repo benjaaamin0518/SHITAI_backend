@@ -163,15 +163,9 @@ export type insertAnswerResponse =
     }
   | { error: string; status: number };
 export type insertAnswerApiResponse = Response<insertAnswerResponse>;
-export type updateWishRequest = accessTokenAuthRequest &
-  Omit<
-    Wish,
-    | "participationConfirmSchema"
-    | "postConfirmSchema"
-    | "participants"
-    | "withdrawn"
-    | "createdAt"
-  >;
+export type updateWishRequest = accessTokenAuthRequest & {
+  id: string;
+} & Partial<Omit<Wish, "id">>;
 
 export type updateWishApiRequest = Request<updateWishRequest>;
 export type updateWishResponse =

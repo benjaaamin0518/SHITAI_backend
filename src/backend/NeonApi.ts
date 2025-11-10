@@ -325,7 +325,7 @@ export class NeonApi {
       }
       const { rows: insertWishRows } = await this.pool.query(
         `INSERT INTO public.shitai_wish (${this.columns.join(",")}) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15) RETURNING id;`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15, $16) RETURNING id;`,
         [
           leftWish.groupId,
           leftWish.creatorId,
@@ -335,13 +335,16 @@ export class NeonApi {
           leftWish.displayDate,
           leftWish.displayText,
           leftWish.notes,
-          leftWish.deadline,
+          leftWish.deadline == "" ? null : leftWish.deadline,
           leftWish.minParticipants,
           leftWish.maxParticipants,
           leftWish.actionLabel,
           false,
           participationConfirmSchema.type,
           postConfirmSchema.type,
+          leftWish.implementationDatetime == ""
+            ? null
+            : leftWish.implementationDatetime,
         ]
       );
       if (insertWishRows.length !== 1) {
@@ -465,7 +468,7 @@ export class NeonApi {
       }
 
       const { rows: answerRows } = await this.pool.query(
-        `SELECT sj."joinedAt", sa."userId", ss."schemaType", ss.type, sa.value
+        `SELECT sj."joinedAt", sj."userId", ss."schemaType", ss.type, sa.value
         FROM shitai_join as sj LEFT JOIN shitai_schema as ss ON ss."wishId" = $1 LEFT JOIN public.shitai_answer as sa ON sa."schemaId" = ss.id AND ss."wishId" = $1 WHERE sj."wishId" = $1 ORDER BY sj."joinedAt" ASC;`,
         [wishId]
       );
@@ -607,30 +610,13 @@ export class NeonApi {
           answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer
         )) {
           const repKey = key.replace("Answers", "");
-          console.log([
-            id,
-            (
-              answer[
-                key as keyof Omit<insertAnswerRequest, "userInfo">
-              ] as answer
-            )[schema as keyof answer],
-            repKey,
-            schema,
-            wishId,
-          ]);
+          const value = (
+            answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer
+          )[schema as keyof answer];
+          if (!value || value == "") continue;
           const { rows: insertAnswerRows } = await this.pool.query(
             `INSERT INTO public.shitai_answer ("userId", "schemaId", "value") SELECT $1, ss.id, $2 FROM public.shitai_schema as ss WHERE ss."schemaType" = $3 AND ss."type" = $4 AND ss."wishId" = $5 LIMIT 1 RETURNING id`,
-            [
-              id,
-              (
-                answer[
-                  key as keyof Omit<insertAnswerRequest, "userInfo">
-                ] as answer
-              )[schema as keyof answer],
-              repKey,
-              schema,
-              wishId,
-            ]
+            [id, value, repKey, schema, wishId]
           );
           if (insertAnswerRows.length !== 1) {
             throw {
@@ -664,33 +650,21 @@ export class NeonApi {
         };
       }
       const { id: wishId, ...updateWish } = wish;
-      console.log(
-        `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
-          (prev, current) => {
-            const str =
-              `"${current}"` +
-              " = " +
-              `'${
-                updateWish[
-                  current as keyof Omit<updateWishRequest, "userInfo" | "id">
-                ]
-              }'`;
-            return prev !== "" ? prev + ", " + str : str;
-          },
-          ""
-        )} WHERE id = $1 RETURNING id;`
-      );
+
       const { rows: updateRows } = await this.pool.query(
         `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
           (prev, current) => {
-            const str =
-              `"${current}"` +
-              " = " +
-              `'${
-                updateWish[
-                  current as keyof Omit<updateWishRequest, "userInfo" | "id">
-                ]
-              }'`;
+            const value =
+              updateWish[
+                current as keyof Omit<updateWishRequest, "userInfo" | "id">
+              ] == ""
+                ? "NULL"
+                : "'" +
+                  updateWish[
+                    current as keyof Omit<updateWishRequest, "userInfo" | "id">
+                  ] +
+                  "'";
+            const str = `"${current}"` + " = " + `${value}`;
             return prev !== "" ? prev + ", " + str : str;
           },
           ""
@@ -725,8 +699,8 @@ export class NeonApi {
 
       const { rows: wishRows } = await this.pool.query(
         `SELECT id, ${this.columns.join(",")}
-        FROM public.shitai_wish ORDER BY id ASC;`,
-        []
+        FROM public.shitai_wish WHERE "groupId" = $1 ORDER BY id ASC;`,
+        [groupId]
       );
       if (wishRows.length === 0) {
         throw {

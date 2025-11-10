@@ -126,7 +126,7 @@ app.post(
   }
 );
 app.post(
-  "/api/v1/post/insertUser",
+  "/api/v1/post/insertUserInfo",
   async (req: insertUserInfoApiRequest, res: insertUserInfoApiResponse) => {
     try {
       const updateObj = req.body;
@@ -195,9 +195,13 @@ app.post(
   "/api/v1/post/insertAnswer",
   async (req: insertAnswerApiRequest, res: insertAnswerApiResponse) => {
     try {
-      const { userInfo, ...left } = req.body;
+      const { userInfo, id, ...left } = req.body;
       const { id: userId } = await initAccessTokenAuth(userInfo);
-      const result = await neonApi.updateWish(left, Number(userId));
+      const result = await neonApi.insertAnswer(
+        left,
+        Number(userId),
+        Number(id)
+      );
       // ユーザー情報とトークンをクライアントに返す
       res.status(200).json({
         status: 200, // ステータスコード
