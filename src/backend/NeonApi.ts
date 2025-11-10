@@ -469,7 +469,7 @@ export class NeonApi {
 
       const { rows: answerRows } = await this.pool.query(
         `SELECT sj."joinedAt", sj."userId", ss."schemaType", ss.type, sa.value
-        FROM shitai_join as sj LEFT JOIN shitai_schema as ss ON ss."wishId" = $1 LEFT JOIN public.shitai_answer as sa ON sa."schemaId" = ss.id AND ss."wishId" = $1 WHERE sj."wishId" = $1 ORDER BY sj."joinedAt" ASC;`,
+        FROM shitai_join as sj LEFT JOIN shitai_schema as ss ON ss."wishId" = $1 LEFT JOIN public.shitai_answer as sa ON sa."schemaId" = ss.id AND ss."wishId" = $1 AND sa."userId" = sj."userId" WHERE sj."wishId" = $1 ORDER BY sj."joinedAt" ASC;`,
         [wishId]
       );
       // if (answerRows.length === 0) {
