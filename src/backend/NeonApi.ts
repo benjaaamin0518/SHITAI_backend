@@ -511,13 +511,10 @@ export class NeonApi {
       throw e;
     }
   }
-  public async getWishById(
-    wish: Omit<getWishByIdRequest, "userInfo">,
-    id: number
-  ) {
+  public async getWishById(wishId: number, id: number) {
     // レスポンス内容(初期値)
     let response: Wish = {
-      id: wish.id,
+      id: wishId.toString(),
       groupId: "",
       creatorId: "",
       category: "",
@@ -533,9 +530,8 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
-        [id, wish.id]
+        [id, wishId]
       );
-      console.log(id, wish.id, wish);
       if (groupRows.length !== 1) {
         throw {
           message: "権限がありません。グループ外のユーザーです。",
@@ -545,7 +541,7 @@ export class NeonApi {
       const { rows: wishRows } = await this.pool.query(
         `SELECT ${this.columns.join(",")}
         FROM public.shitai_wish WHERE id = $1;`,
-        [wish.id]
+        [wishId]
       );
       if (wishRows.length !== 1) {
         throw {
@@ -553,7 +549,7 @@ export class NeonApi {
         };
       }
       console.log(wishRows[0]);
-      const res = await this.createResponseData(wish.id);
+      const res = await this.createResponseData(wishId.toString());
       let extColumns = this.columns.filter(
         (col) =>
           col !== '"participationConfirmSchemaType"' &&

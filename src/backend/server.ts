@@ -173,9 +173,9 @@ app.post(
   "/api/v1/get/wishById",
   async (req: getWishByIdApiRequest, res: getWishByIdApiResponse) => {
     try {
-      const { userInfo, wish } = req.body;
+      const { userInfo, id } = req.body;
       const { id: userId } = await initAccessTokenAuth(userInfo);
-      const result = await neonApi.getWishById(wish, Number(userId));
+      const result = await neonApi.getWishById(Number(id), Number(userId));
       // ユーザー情報とトークンをクライアントに返す
       res.status(200).json({
         status: 200, // ステータスコード
