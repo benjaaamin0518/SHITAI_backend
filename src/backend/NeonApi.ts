@@ -1,4 +1,6 @@
 import { Pool } from "pg";
+import { Storage, StorageOptions } from "@google-cloud/storage";
+import { v4 as uuidv4 } from "uuid";
 import {
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
@@ -25,6 +27,7 @@ import {
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
+import { ExternalAccountClientOptions, JWTInput } from "google-auth-library";
 
 require("dotenv").config();
 
@@ -270,6 +273,61 @@ export class NeonApi {
     response = { id, ...newResponse };
     return response;
   }
+  private async uploadImageData(imageData: string) {
+    const credentials = {
+      type: process.env.REACT_APP_CREDENTIALS_TYPE,
+      client_email: process.env.REACT_APP_CREDENTIALS_CLIENT_EMAIL,
+      private_key: (
+        process.env.REACT_APP_CREDENTIALS_PRIVATE_KEY || ""
+      ).replace(/\\n/g, "\n"),
+      private_key_id: process.env.REACT_APP_CREDENTIALS_PRIVATE_KEY_ID,
+      project_id: process.env.REACT_APP_PROJECT_ID,
+      client_id: process.env.REACT_APP_CREDENTIALS_CLIENT_ID,
+      auth_uri: process.env.REACT_APP_CREDENTIALS_AUTH_URI,
+      token_uri: process.env.REACT_APP_CREDENTIALS_TOKEN_URI,
+      auth_provider_x509_cert_url:
+        process.env.REACT_APP_CREDENTIALS_AUTH_PROVIDER_X509_CERT_URL,
+      client_x509_cert_url:
+        process.env.REACT_APP_CREDENTIALS_CLIENT_X509_CERT_URL,
+      universe_domain: process.env.REACT_APP_CREDENTIALS_UNIVERSE_DOMAIN,
+    };
+    const storage = new Storage({
+      projectId: process.env.REACT_APP_PROJECT_NAME,
+      credentials,
+    });
+    const bucket = storage.bucket(process.env.REACT_APP_BUCKET_NAME || "");
+
+    const parseBase64Image = (base64: string) => {
+      const matches = base64.match(/^data:(.+);base64,(.+)$/);
+      if (!matches) throw new Error("Invalid Base64 string");
+      return { contentType: matches[1], base64Data: matches[2] };
+    };
+
+    const uploadBase64Image = async (base64: string, uploadPath: string) => {
+      const { contentType, base64Data } = parseBase64Image(base64);
+      const buffer = Buffer.from(base64Data, "base64");
+
+      const file = bucket.file(
+        uploadPath + "." + contentType.replace("image/", "")
+      );
+
+      await file.save(buffer, {
+        metadata: {
+          contentType,
+          cacheControl: "public, max-age=31536000",
+        },
+      });
+
+      // 必要なら公開
+      await file.makePublic();
+
+      return `https://storage.googleapis.com/${file.cloudStorageURI.href.replace(
+        "gs://",
+        ""
+      )}`;
+    };
+    return imageData ? await uploadBase64Image(imageData, uuidv4()) : null;
+  }
   /**
    *
    * @param param0 userId,作成に必要な情報(price, description, created_at)
@@ -323,6 +381,7 @@ export class NeonApi {
           message: "権限がありません。グループ外のユーザーです。",
         };
       }
+      const imageData = await this.uploadImageData(leftWish.imageData || "");
       const { rows: insertWishRows } = await this.pool.query(
         `INSERT INTO public.shitai_wish (${this.columns.join(",")}) 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15, $16) RETURNING id;`,
@@ -330,7 +389,7 @@ export class NeonApi {
           leftWish.groupId,
           leftWish.creatorId,
           leftWish.category,
-          leftWish.imageData,
+          imageData,
           leftWish.title,
           leftWish.displayDate,
           leftWish.displayText,
@@ -646,6 +705,8 @@ export class NeonApi {
         };
       }
       const { id: wishId, ...updateWish } = wish;
+      const imageData = await this.uploadImageData(updateWish.imageData || "");
+      console.log("-----------------------", imageData);
 
       const { rows: updateRows } = await this.pool.query(
         `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
@@ -655,12 +716,18 @@ export class NeonApi {
                 current as keyof Omit<updateWishRequest, "userInfo" | "id">
               ] == ""
                 ? "NULL"
+                : current == "imageData"
+                ? imageData
+                  ? "'" + imageData + "'"
+                  : "NULL"
                 : "'" +
                   updateWish[
                     current as keyof Omit<updateWishRequest, "userInfo" | "id">
                   ] +
                   "'";
             const str = `"${current}"` + " = " + `${value}`;
+            console.log("-----------------------", str);
+
             return prev !== "" ? prev + ", " + str : str;
           },
           ""
