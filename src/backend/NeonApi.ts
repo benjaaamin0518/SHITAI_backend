@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { Storage, StorageOptions } from "@google-cloud/storage";
-import { v4 as uuidv4 } from "uuid";
+const { randomUUID } = require("crypto");
 import {
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
@@ -326,7 +326,7 @@ export class NeonApi {
         ""
       )}`;
     };
-    return imageData ? await uploadBase64Image(imageData, uuidv4()) : null;
+    return imageData ? await uploadBase64Image(imageData, randomUUID()) : null;
   }
   /**
    *
