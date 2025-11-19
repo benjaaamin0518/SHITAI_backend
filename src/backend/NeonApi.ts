@@ -705,12 +705,16 @@ export class NeonApi {
         };
       }
       const { id: wishId, ...updateWish } = wish;
-      const imageData = await this.uploadImageData(updateWish.imageData || "");
+      const isUrl = URL.canParse(updateWish.imageData || "");
+      const imageData = isUrl
+        ? updateWish.imageData
+        : await this.uploadImageData(updateWish.imageData || "");
       console.log("-----------------------", imageData);
 
       const { rows: updateRows } = await this.pool.query(
         `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
           (prev, current) => {
+            console.log("----------------------", isUrl);
             const value =
               updateWish[
                 current as keyof Omit<updateWishRequest, "userInfo" | "id">
