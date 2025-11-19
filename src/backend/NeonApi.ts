@@ -238,6 +238,7 @@ export class NeonApi {
       id: string;
       refreshToken: string;
     };
+    console.log(id, decodedRefreshToken);
     // ユーザーID、アクセストークンが一致するユーザー情報を取得する。
     const { rows } = await this.pool.query(
       `SELECT id
