@@ -114,6 +114,11 @@ app.post(
           status: 200, // ステータスコード
           result: { ...response },
         });
+      } else {
+        res.status(500).json({
+          error: "error",
+          status: 500, // ステータスコード
+        });
       }
       return;
     } catch (error: any) {
