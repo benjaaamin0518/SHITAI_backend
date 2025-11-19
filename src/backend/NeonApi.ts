@@ -705,7 +705,9 @@ export class NeonApi {
         };
       }
       const { id: wishId, ...updateWish } = wish;
-      const isUrl = URL.canParse(updateWish.imageData || "");
+      let urlPattern = /^(https?|ftp)(:\/\/[\w\/:%#\$&\?\(\)~\.=\+\-]+)/;
+
+      const isUrl = urlPattern.test(updateWish.imageData || "");
       const imageData = isUrl
         ? updateWish.imageData
         : await this.uploadImageData(updateWish.imageData || "");
