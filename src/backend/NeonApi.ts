@@ -382,7 +382,13 @@ export class NeonApi {
           message: "権限がありません。グループ外のユーザーです。",
         };
       }
-      const imageData = await this.uploadImageData(leftWish.imageData || "");
+      let urlPattern = /^(https?|ftp)(:\/\/[\w\/:%#\$&\?\(\)~\.=\+\-]+)/;
+
+      const isUrl = urlPattern.test(leftWish.imageData || "");
+      console.log(leftWish.imageData);
+      const imageData = isUrl
+        ? leftWish.imageData
+        : await this.uploadImageData(leftWish.imageData || "");
       const { rows: insertWishRows } = await this.pool.query(
         `INSERT INTO public.shitai_wish (${this.columns.join(",")}) 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15, $16) RETURNING id;`,
