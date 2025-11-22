@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { Storage, StorageOptions } from "@google-cloud/storage";
 const { randomUUID } = require("crypto");
+import { Resend } from "resend";
 import {
   accessTokenAuthApiResponse,
   accessTokenAuthRequest,
@@ -28,6 +29,7 @@ import {
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
 import { ExternalAccountClientOptions, JWTInput } from "google-auth-library";
+import { formatDisplayDate } from "../../utils/date";
 
 require("dotenv").config();
 
@@ -64,6 +66,18 @@ export class NeonApi {
     '"postConfirmSchemaType"',
     '"implementationDatetime"',
   ] as const;
+  private columnNames = [
+    { column: "category", name: "カテゴリ" },
+    { column: "title", name: "タイトル" },
+    { column: "displayDate", name: "表示用日時" },
+    { column: "displayText", name: "表示用文字" },
+    { column: "notes", name: "備考" },
+    { column: "deadline", name: "期限日" },
+    { column: "minParticipants", name: "最低確定人数" },
+    { column: "maxParticipants", name: "最大確定人数" },
+    { column: "implementationDatetime", name: "実施日" },
+  ];
+  private dateColumns = ["deadline", "implementationDatetime"];
   private createTokens(id: number) {
     const response = { accessToken: "", refreshToken: "" };
     // アクセストークン作成
@@ -360,6 +374,19 @@ export class NeonApi {
     }
     return response;
   }
+  private async sendEmail(to: string[], subject: string, html: string) {
+    const resend = new Resend(process.env.REACT_APP_RESEND_API_TOKEN);
+    const { data, error } = await resend.emails.send({
+      from: process.env.REACT_APP_FROM_EMAIL || "",
+      to: ["nishikawa.1101.sub@gmail.com"],
+      subject: subject,
+      html: html,
+    });
+
+    if (error) {
+      return console.error({ error });
+    }
+  }
   public async insertWish(
     wish: Omit<insertWishRequest, "userInfo">,
     id: number
@@ -373,7 +400,7 @@ export class NeonApi {
         wish;
       console.log(leftWish.groupId);
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg.id = $2;`,
         [id, leftWish.groupId]
       );
       console.log(id);
@@ -493,6 +520,123 @@ export class NeonApi {
         }
       }
       response.id = insertWishRows[0]["id"];
+      // グループメンバ情報取得
+      const { rows: mailRows } = await this.pool.query(
+        `SELECT sui.user_id As mail
+        FROM public.shitai_group_join as sgj INNER JOIN shitai_user_info as sui ON sui.id = sgj."userId" WHERE sgj."groupId" = $1;`,
+        [leftWish.groupId]
+      );
+      if (mailRows.length === 0) {
+        throw {
+          message: "グループメンバ情報の取得に失敗しました。",
+        };
+      }
+      const groupName = groupRows[0]["groupName"];
+
+      // 作成者情報取得
+      const { rows: userRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail
+        FROM shitai_user_info as sui WHERE sui."id" = $1;`,
+        [leftWish.creatorId]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "作成者情報の取得に失敗しました。",
+        };
+      }
+      const creatorName = userRows[0]["name"];
+      const creatorMail = userRows[0]["mail"];
+      const to = mailRows
+        .map((row) => row["mail"])
+        .filter((mail) => mail != creatorMail);
+      console.log(to);
+
+      // メール内容作成
+      const description = Object.keys(leftWish).reduce((prev, current) => {
+        const obj = this.columnNames.find((obj) => obj.column == current);
+        const isDate = this.dateColumns.some((dtCol) => dtCol == current);
+        const column = current as keyof Omit<
+          insertWishRequest,
+          "userInfo" | "id" | "participationConfirmSchema" | "postConfirmSchema"
+        >;
+        if (obj) {
+          return (
+            prev +
+            "<tr><td>" +
+            `${obj.name}</td><td>${
+              isDate
+                ? formatDisplayDate(leftWish[column] as string)
+                : leftWish[column]
+            }</td></tr>`
+          );
+        }
+        return prev;
+      }, "");
+
+      const html = `
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>新しい「したい」通知</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Arial, sans-serif; margin:0; padding:0; background:#f6f8fb; color:#111; }
+    .container { max-width:600px; margin:28px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(20,30,60,0.08); }
+    .header { padding:20px; background:linear-gradient(90deg,#1f6feb,#6b9cff); color:#fff; }
+    .content { padding:20px; }
+    .title { font-size:18px; margin:0 0 8px 0; }
+    .meta { font-size:13px; color:#6b7280; margin-bottom:16px; }
+    .card { background:#f7f9fc; padding:14px; border-radius:6px; margin-bottom:16px; }
+    .btn { display:inline-block; padding:12px 18px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .btn-primary { background:#1f6feb; color:#fff; }
+    .footer { font-size:12px; color:#9aa0ab; padding:18px; text-align:center; }
+    .kv { font-weight:700; color:#111; }
+    pre { white-space:pre-wrap; word-wrap:break-word; }
+  </style>
+</head>
+<body>
+  <div class="container" role="article" aria-label="SHITAI 新しいしたい通知">
+    <div class="header">
+      <h1 style="font-size:20px;margin:0">SHITAI</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;opacity:0.95">グループ内に新しい「したい」が投稿されました</p>
+    </div>
+
+    <div class="content">
+      <p class="title">🔔 新着：${leftWish.title}</p>
+      <p class="meta"><span class="kv">作成者：</span> ${creatorName} &nbsp;|&nbsp; <span class="kv">グループ：</span> ${groupName}</p>
+
+      <div class="card">
+        <p style="margin:0 0 8px 0;"><span class="kv">内容</span></p>
+        <pre style="margin:0;"><table>${description}</table></pre>
+      </div>
+
+      <p style="margin:0 0 18px 0;">詳細や参加は下のボタンから確認してください。</p>
+
+      <a class="btn btn-primary" href="${
+        process.env.REACT_APP_FRONTEND_URL + "/" + "wish" + "/" + response.id
+      }" target="_blank" rel="noopener">詳細を確認する</a>
+
+      <hr style="border:none;border-top:1px solid #eef2f7;margin:18px 0;" />
+
+      <p style="margin:0;font-size:13px;color:#556070;">
+        気になる「したい」があれば、参加やリアクションでグループを活性化しましょう！
+      </p>
+    </div>
+    <div class="footer">
+      このメールは自動配信です。
+    </div>
+  </div>
+</body>
+</html>
+`;
+      if (to.length != 0) {
+        await this.sendEmail(
+          to,
+          `【SHITAI】新しい「したい」が投稿されました — ${leftWish.title}`,
+          html
+        );
+      }
       await this.pool.query("COMMIT");
     } catch (e) {
       await this.pool.query("ROLLBACK");
@@ -658,7 +802,7 @@ export class NeonApi {
     await this.pool.query("BEGIN");
     try {
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
         [id, wishId]
       );
       if (groupRows.length !== 1) {
@@ -667,6 +811,7 @@ export class NeonApi {
         };
       }
       // いんんさーとを行う
+      const answers: { schemaId: string; value: string }[] = [];
       for (const key of Object.keys(answer)) {
         for (const schema of Object.keys(
           answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer
@@ -677,7 +822,7 @@ export class NeonApi {
           )[schema as keyof answer];
           if (!value || value == "") continue;
           const { rows: insertAnswerRows } = await this.pool.query(
-            `INSERT INTO public.shitai_answer ("userId", "schemaId", "value") SELECT $1, ss.id, $2 FROM public.shitai_schema as ss WHERE ss."schemaType" = $3 AND ss."type" = $4 AND ss."wishId" = $5 LIMIT 1 RETURNING id`,
+            `INSERT INTO public.shitai_answer ("userId", "schemaId", "value") SELECT $1, ss.id, $2 FROM public.shitai_schema as ss WHERE ss."schemaType" = $3 AND ss."type" = $4 AND ss."wishId" = $5 LIMIT 1 RETURNING id, "schemaId", "value"`,
             [id, value, repKey, schema, wishId]
           );
           if (insertAnswerRows.length !== 1) {
@@ -685,7 +830,147 @@ export class NeonApi {
               message: "アンサーの登録に失敗しました。",
             };
           }
+          answers.push({
+            schemaId: insertAnswerRows[0]["schemaId"],
+            value: insertAnswerRows[0]["value"],
+          });
         }
+      }
+      // 既存参加者情報取得
+      const { rows: userRows } = await this.pool.query(
+        `SELECT sui.user_id As mail
+        FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
+        [wishId]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "既存参加者情報の取得に失敗しました。",
+        };
+      }
+
+      const groupName = groupRows[0]["groupName"];
+
+      // 参加者情報取得
+      const { rows: joinUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail
+        FROM shitai_user_info as sui WHERE sui."id" = $1;`,
+        [id]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "参加者情報の取得に失敗しました。",
+        };
+      }
+      // 作成者情報取得
+      const { rows: creatorUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail, sw.title
+        FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
+        [wishId]
+      );
+      if (creatorUserRows.length === 0) {
+        throw {
+          message: "作成者情報の取得に失敗しました。",
+        };
+      }
+      const creatorName = creatorUserRows[0]["name"];
+      const creatorMail = creatorUserRows[0]["mail"];
+      const title = creatorUserRows[0]["title"];
+      userRows.push({ mail: creatorMail });
+
+      const joinUserName = joinUserRows[0]["name"];
+      const joinUserMail = joinUserRows[0]["mail"];
+      const to = userRows
+        .map((row) => row["mail"])
+        .filter((mail) => mail != joinUserMail);
+      console.log(to);
+
+      // メール内容作成
+      let description = "";
+      for (const answer of answers) {
+        const { rows: schemaRows } = await this.pool.query(
+          `SELECT ss."schemaType", ss."type", ss."required", ss."label"
+        FROM shitai_schema as ss WHERE ss.id = $1;`,
+          [answer.schemaId]
+        );
+        if (schemaRows.length !== 1) {
+          throw {
+            message: "スキーマの取得に失敗しました。",
+          };
+        }
+        const isDate = schemaRows[0]["type"] == "datetime";
+        description =
+          description +
+          "<tr><td>" +
+          `${schemaRows[0]["label"]}</td><td>${
+            isDate ? formatDisplayDate(answer.value) : answer.value
+          }</td></td>`;
+      }
+
+      const html = `
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>参加者の入力通知</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Arial, sans-serif; margin:0; padding:0; background:#f6f8fb; color:#111; }
+    .container { max-width:600px; margin:28px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(20,30,60,0.08); }
+    .header { padding:20px; background:#7c3aed; color:#fff; }
+    .content { padding:20px; }
+    .title { font-size:18px; margin:0 0 8px 0; }
+    .meta { font-size:13px; color:#6b7280; margin-bottom:12px; }
+    .form { background:#f7f9fc; padding:14px; border-radius:6px; margin-bottom:16px; }
+    .btn { display:inline-block; padding:12px 18px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .btn-primary { background:#7c3aed; color:#fff; }
+    .footer { font-size:12px; color:#9aa0ab; padding:18px; text-align:center; }
+    table { width:100%; border-collapse:collapse; }
+    td { padding:8px 0; vertical-align:top; }
+    .key { font-weight:700; color:#111; width:36%; }
+    .val { color:#222; }
+  </style>
+</head>
+<body>
+  <div class="container" role="article">
+    <div class="header">
+      <h1 style="font-size:20px;margin:0">SHITAI</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;opacity:0.95">参加者が確認項目を入力しました</p>
+    </div>
+
+    <div class="content">
+      <p class="title">👥 ${joinUserName} さんが参加・確認しました — ${title}</p>
+      <p class="meta"><span style="font-weight:700">グループ：</span> ${groupName} </p>
+
+      <div class="form">
+        <p style="margin:0 0 12px 0;"><strong>入力された確認項目</strong></p>
+        <table>
+      ${description}
+      </table>
+      </div>
+
+      <p style="margin:0 0 18px 0;">参加者情報の最新状況は下のリンクで確認できます。</p>
+      <a class="btn btn-primary" href="${
+        process.env.REACT_APP_FRONTEND_URL + "/" + "wish" + "/" + wishId
+      }" target="_blank" rel="noopener">参加者情報を確認する</a>
+
+      <hr style="border:none;border-top:1px solid #eef2f7;margin:18px 0;" />
+      <p style="margin:0;font-size:13px;color:#556070;">
+        必要であれば主催者や他の参加者へ連絡を取りましょう。
+      </p>
+    </div>
+    <div class="footer">
+      このメールは自動配信です。
+    </div>
+  </div>
+</body>
+</html>
+`;
+      if (to.length != 0) {
+        await this.sendEmail(
+          to,
+          `【SHITAI】参加者が入力しました — ${title}（${joinUserName}）`,
+          html
+        );
       }
       await this.pool.query("COMMIT");
     } catch (e) {
@@ -703,7 +988,7 @@ export class NeonApi {
     await this.pool.query("BEGIN");
     try {
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
         [id, wish.id]
       );
       if (groupRows.length !== 1) {
@@ -751,6 +1036,132 @@ export class NeonApi {
         throw {
           message: "したいことの更新に失敗しました。",
         };
+      }
+      // 既存参加者情報取得
+      const { rows: userRows } = await this.pool.query(
+        `SELECT sui.user_id As mail
+        FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
+        [wishId]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "既存参加者情報の取得に失敗しました。",
+        };
+      }
+
+      const groupName = groupRows[0]["groupName"];
+
+      // 参加者情報取得
+      const { rows: joinUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail
+        FROM shitai_user_info as sui WHERE sui."id" = $1;`,
+        [id]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "参加者情報の取得に失敗しました。",
+        };
+      }
+      // 作成者情報取得
+      const { rows: creatorUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail, sw.title
+        FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
+        [wishId]
+      );
+      if (creatorUserRows.length === 0) {
+        throw {
+          message: "作成者情報の取得に失敗しました。",
+        };
+      }
+      const creatorName = creatorUserRows[0]["name"];
+      const creatorMail = creatorUserRows[0]["mail"];
+      const title = creatorUserRows[0]["title"];
+      userRows.push({ mail: creatorMail });
+      const to = userRows
+        .map((row) => row["mail"])
+        .filter((mail) => mail != creatorMail);
+      console.log(to);
+      // メール内容作成
+      const description = Object.keys(wish).reduce((prev, current) => {
+        const obj = this.columnNames.find((obj) => obj.column == current);
+        const isDate = this.dateColumns.some((dtCol) => dtCol == current);
+        const column = current as keyof Omit<
+          insertWishRequest,
+          "userInfo" | "id" | "participationConfirmSchema" | "postConfirmSchema"
+        >;
+        if (obj) {
+          return (
+            prev +
+            "<tr><td>" +
+            `${obj.name}</td><td>${
+              isDate ? formatDisplayDate(wish[column] as string) : wish[column]
+            }</td></tr>`
+          );
+        }
+        return prev;
+      }, "");
+
+      const html = `
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>したい更新通知</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Arial, sans-serif; margin:0; padding:0; background:#f6f8fb; color:#111; }
+    .container { max-width:600px; margin:28px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(20,30,60,0.08); }
+    .header { padding:20px; background:#0f766e; color:#fff; }
+    .content { padding:20px; }
+    .title { font-size:18px; margin:0 0 8px 0; }
+    .meta { font-size:13px; color:#6b7280; margin-bottom:12px; }
+    .changes { background:#fff8e6; padding:12px; border-radius:6px; border:1px solid #f1e6c8; margin-bottom:16px; }
+    .btn { display:inline-block; padding:12px 18px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .btn-primary { background:#0f766e; color:#fff; }
+    .footer { font-size:12px; color:#9aa0ab; padding:18px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="container" role="article">
+    <div class="header">
+      <h1 style="font-size:20px;margin:0">SHITAI</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;opacity:0.95">「したい」の更新がありました</p>
+    </div>
+
+    <div class="content">
+      <p class="title">✏️ 更新：${title}</p>
+      <p class="meta"><span style="font-weight:700">更新者：</span> ${creatorName} </p>
+
+      <div class="changes">
+        <p style="margin:0 0 8px 0;"><strong>変更された項目</strong></p>
+        <pre style="margin:0;"><table>${description}</table></pre>
+      </div>
+
+      <p style="margin:0 0 18px 0;">変更の詳細は下のリンクからご確認ください。</p>
+      <a class="btn btn-primary" href="${
+        process.env.REACT_APP_FRONTEND_URL + "/" + "wish" + "/" + wishId
+      }" target="_blank" rel="noopener">更新内容を確認する</a>
+
+      <hr style="border:none;border-top:1px solid #eef2f7;margin:18px 0;" />
+      <p style="margin:0;font-size:13px;color:#556070;">
+        参加予定の方は予定や入力内容に影響がないかご確認ください。
+      </p>
+    </div>
+
+    <div class="footer">
+      このメールは SHITAI からの自動通知です。
+    </div>
+  </div>
+</body>
+</html>
+
+`;
+      if (to.length != 0) {
+        await this.sendEmail(
+          to,
+          `【SHITAI】「したい」が更新されました — ${title}`,
+          html
+        );
       }
       await this.pool.query("COMMIT");
     } catch (e) {
@@ -968,7 +1379,7 @@ export class NeonApi {
     await this.pool.query("BEGIN");
     try {
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
         [id, wishId]
       );
       if (groupRows.length !== 1) {
@@ -995,6 +1406,115 @@ export class NeonApi {
           message: "したいこと参加登録に失敗しました。",
         };
       }
+
+      // 既存参加者情報取得
+      const { rows: userRows } = await this.pool.query(
+        `SELECT sui.user_id As mail
+        FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
+        [wishId]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "既存参加者情報の取得に失敗しました。",
+        };
+      }
+
+      const groupName = groupRows[0]["groupName"];
+
+      // 参加者情報取得
+      const { rows: joinUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail
+        FROM shitai_user_info as sui WHERE sui."id" = $1;`,
+        [id]
+      );
+      if (userRows.length === 0) {
+        throw {
+          message: "参加者情報の取得に失敗しました。",
+        };
+      }
+      // 作成者情報取得
+      const { rows: creatorUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail, sw.title
+        FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
+        [wishId]
+      );
+      if (creatorUserRows.length === 0) {
+        throw {
+          message: "作成者情報の取得に失敗しました。",
+        };
+      }
+      const creatorName = creatorUserRows[0]["name"];
+      const creatorMail = creatorUserRows[0]["mail"];
+      const title = creatorUserRows[0]["title"];
+      userRows.push({ mail: creatorMail });
+
+      const joinUserName = joinUserRows[0]["name"];
+      const joinUserMail = joinUserRows[0]["mail"];
+      const to = userRows
+        .map((row) => row["mail"])
+        .filter((mail) => mail != joinUserMail);
+      console.log(to);
+
+      const html = `
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>新たな参加者ユーザーの通知</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Arial, sans-serif; margin:0; padding:0; background:#f6f8fb; color:#111; }
+    .container { max-width:600px; margin:28px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(20,30,60,0.08); }
+    .header { padding:20px; background:#7c3aed; color:#fff; }
+    .content { padding:20px; }
+    .title { font-size:18px; margin:0 0 8px 0; }
+    .meta { font-size:13px; color:#6b7280; margin-bottom:12px; }
+    .form { background:#f7f9fc; padding:14px; border-radius:6px; margin-bottom:16px; }
+    .btn { display:inline-block; padding:12px 18px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .btn-primary { background:#7c3aed; color:#fff; }
+    .footer { font-size:12px; color:#9aa0ab; padding:18px; text-align:center; }
+    table { width:100%; border-collapse:collapse; }
+    td { padding:8px 0; vertical-align:top; }
+    .key { font-weight:700; color:#111; width:36%; }
+    .val { color:#222; }
+  </style>
+</head>
+<body>
+  <div class="container" role="article">
+    <div class="header">
+      <h1 style="font-size:20px;margin:0">SHITAI</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;opacity:0.95">ユーザーが参加しました。</p>
+    </div>
+
+    <div class="content">
+      <p class="title">👥 ${joinUserName} さんが参加しました — ${title}</p>
+      <p class="meta"><span style="font-weight:700">グループ：</span> ${groupName} </p>
+
+      <p style="margin:0 0 18px 0;">参加者情報の最新状況は下のリンクで確認できます。</p>
+      <a class="btn btn-primary" href="${
+        process.env.REACT_APP_FRONTEND_URL + "/" + "wish" + "/" + wishId
+      }" target="_blank" rel="noopener">参加者情報を確認する</a>
+
+      <hr style="border:none;border-top:1px solid #eef2f7;margin:18px 0;" />
+      <p style="margin:0;font-size:13px;color:#556070;">
+        必要であれば主催者や他の参加者へ連絡を取りましょう。
+      </p>
+    </div>
+    <div class="footer">
+      このメールは自動配信です。
+    </div>
+  </div>
+</body>
+</html>
+`;
+      if (to.length != 0) {
+        await this.sendEmail(
+          to,
+          `【SHITAI】ユーザーが参加しました — ${title}（${joinUserName}）`,
+          html
+        );
+      }
+
       await this.pool.query("COMMIT");
     } catch (e) {
       await this.pool.query("ROLLBACK");
