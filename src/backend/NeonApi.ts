@@ -378,7 +378,7 @@ export class NeonApi {
     const resend = new Resend(process.env.REACT_APP_RESEND_API_TOKEN);
     const { data, error } = await resend.emails.send({
       from: process.env.REACT_APP_FROM_EMAIL || "",
-      to: ["nishikawa.1101.sub@gmail.com"],
+      to: to,
       subject: subject,
       html: html,
     });
