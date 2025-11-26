@@ -1335,6 +1335,15 @@ export class NeonApi {
     let response: "success" | "error" = "success";
     await this.pool.query("BEGIN");
     try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sjg.id FROM public.shitai_group_join as sjg WHERE sjg."groupId" = $2 AND sjg."userId" = $1;`,
+        [id, groupId]
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
       // いんんさーとを行う
       const { rows: userRows } = await this.pool.query(
         `SELECT id FROM shitai_user_info WHERE user_id = $1`,
@@ -1345,11 +1354,11 @@ export class NeonApi {
           message: "ユーザー情報取得に失敗しました。",
         };
       }
-      const { rows: groupRows } = await this.pool.query(
+      const { rows: newGroupRows } = await this.pool.query(
         `SELECT id FROM shitai_group_join WHERE "userId" = $1 AND "groupId" = $2`,
         [userRows[0]["id"], groupId]
       );
-      if (groupRows.length !== 0) {
+      if (newGroupRows.length !== 0) {
         throw {
           message: "すでに参加しているグループです。",
         };
