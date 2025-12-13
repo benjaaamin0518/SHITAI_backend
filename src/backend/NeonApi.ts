@@ -201,7 +201,7 @@ export class NeonApi {
         };
         id = obj.id;
         decodedAccessToken = obj.accessToken;
-        console.log(id, decodedAccessToken);
+        //console.log(id, decodedAccessToken);
       } catch (e: any) {
         if ("message" in e) {
           if (e.message === "jwt expired") {
@@ -252,7 +252,7 @@ export class NeonApi {
       id: string;
       refreshToken: string;
     };
-    console.log(id, decodedRefreshToken);
+    //console.log(id, decodedRefreshToken);
     // ユーザーID、アクセストークンが一致するユーザー情報を取得する。
     const { rows } = await this.pool.query(
       `SELECT id
@@ -384,7 +384,7 @@ export class NeonApi {
     });
 
     if (error) {
-      return console.error({ error });
+      return; //console.error({ error });
     }
   }
   public async insertWish(
@@ -398,12 +398,12 @@ export class NeonApi {
       // いんんさーとを行う
       const { participationConfirmSchema, postConfirmSchema, ...leftWish } =
         wish;
-      console.log(leftWish.groupId);
+      //console.log(leftWish.groupId);
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName" FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg.id = $2;`,
         [id, leftWish.groupId]
       );
-      console.log(id);
+      //console.log(id);
       if (groupRows.length !== 1) {
         throw {
           message: "権限がありません。グループ外のユーザーです。",
@@ -412,7 +412,7 @@ export class NeonApi {
       let urlPattern = /^(https?|ftp)(:\/\/[\w\/:%#\$&\?\(\)~\.=\+\-]+)/;
 
       const isUrl = urlPattern.test(leftWish.imageData || "");
-      console.log(leftWish.imageData);
+      //console.log(leftWish.imageData);
       const imageData = isUrl
         ? leftWish.imageData
         : await this.uploadImageData(leftWish.imageData || "");
@@ -549,7 +549,7 @@ export class NeonApi {
       const to = mailRows
         .map((row) => row["mail"])
         .filter((mail) => mail != creatorMail);
-      console.log(to);
+      //console.log(to);
 
       // メール内容作成
       const description = Object.keys(leftWish).reduce((prev, current) => {
@@ -717,7 +717,7 @@ export class NeonApi {
         participants,
       };
     } catch (e) {
-      console.log(e);
+      //console.log(e);
       throw e;
     }
   }
@@ -758,7 +758,7 @@ export class NeonApi {
           message: "したいことの取得に失敗しました。",
         };
       }
-      console.log(wishRows[0]);
+      //console.log(wishRows[0]);
       const res = await this.createResponseData(wishId.toString());
       let extColumns = this.columns.filter(
         (col) =>
@@ -767,7 +767,7 @@ export class NeonApi {
       );
       extColumns.forEach((column) => {
         const repColumn = column.replaceAll('"', "");
-        console.log(repColumn);
+        //console.log(repColumn);
         const value = wishRows[0][repColumn];
         if (value) {
           response = { ...response, [repColumn]: value };
@@ -882,7 +882,7 @@ export class NeonApi {
       const to = userRows
         .map((row) => row["mail"])
         .filter((mail) => mail != joinUserMail);
-      console.log(to);
+      //console.log(to);
 
       // メール内容作成
       let description = "";
@@ -1003,12 +1003,12 @@ export class NeonApi {
       const imageData = isUrl
         ? updateWish.imageData
         : await this.uploadImageData(updateWish.imageData || "");
-      console.log("-----------------------", imageData);
+      //console.log("-----------------------", imageData);
 
       const { rows: updateRows } = await this.pool.query(
         `UPDATE public.shitai_wish SET ${Object.keys(updateWish).reduce(
           (prev, current) => {
-            console.log("----------------------", isUrl);
+            //console.log("----------------------", isUrl);
             const value =
               updateWish[
                 current as keyof Omit<updateWishRequest, "userInfo" | "id">
@@ -1024,7 +1024,7 @@ export class NeonApi {
                   ] +
                   "'";
             const str = `"${current}"` + " = " + `${value}`;
-            console.log("-----------------------", str);
+            //console.log("-----------------------", str);
 
             return prev !== "" ? prev + ", " + str : str;
           },
@@ -1080,7 +1080,7 @@ export class NeonApi {
       const to = userRows
         .map((row) => row["mail"])
         .filter((mail) => mail != creatorMail);
-      console.log(to);
+      //console.log(to);
       // メール内容作成
       const description = Object.keys(wish).reduce((prev, current) => {
         const obj = this.columnNames.find((obj) => obj.column == current);
@@ -1209,7 +1209,7 @@ export class NeonApi {
           withdrawn: false,
           createdAt: "",
         };
-        console.log(wish["id"], wish);
+        //console.log(wish["id"], wish);
         const res = await this.createResponseData(wish.id);
         let extColumns = this.columns.filter(
           (col) =>
@@ -1218,7 +1218,7 @@ export class NeonApi {
         );
         extColumns.forEach((column) => {
           const repColumn = column.replaceAll('"', "");
-          console.log(repColumn);
+          //console.log(repColumn);
           const value = wish[repColumn];
           if (value) {
             resWish = { ...resWish, [repColumn]: value };
@@ -1462,7 +1462,7 @@ export class NeonApi {
       const to = userRows
         .map((row) => row["mail"])
         .filter((mail) => mail != joinUserMail);
-      console.log(to);
+      //console.log(to);
 
       const html = `
 <!doctype html>
