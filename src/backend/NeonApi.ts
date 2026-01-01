@@ -1185,8 +1185,74 @@ export class NeonApi {
       }
 
       const { rows: wishRows } = await this.pool.query(
-        `SELECT id, ${this.columns.join(",")}
-        FROM public.shitai_wish WHERE "groupId" = $1 ORDER BY id ASC;`,
+        `WITH wish AS
+          (SELECT id, ${this.columns.join(",")}
+          FROM public.shitai_wish
+          WHERE "groupId" = $1
+          ORDER BY id ASC),
+        answers AS
+          (SELECT "wishId",
+                  json_agg(to_jsonb(json_build_object('joinedAt', "joinedAt", 'userId', "userId")) || to_jsonb(answer)
+                          ORDER BY "joinedAt" ASC) AS participants
+          FROM
+            (SELECT "wishId",
+                    "joinedAt",
+                    "userId",
+                    json_object_agg("schemaType" || 'Answers', answer) AS answer
+              FROM
+                (SELECT sj."wishId",
+                        sj."joinedAt",
+                        sj."userId",
+                        ss."schemaType",
+                        json_object_agg(ss.type, sa.value) AS answer
+                FROM shitai_join AS sj
+                LEFT JOIN shitai_schema AS ss ON ss."wishId" = sj."wishId"
+                LEFT JOIN public.shitai_answer AS sa ON sa."schemaId" = ss.id
+                AND ss."wishId" = sj."wishId"
+                AND sa."userId" = sj."userId"
+                WHERE EXISTS
+                    (SELECT id
+                      FROM wish
+                      WHERE id = sj."wishId")
+                  AND ss.type <> 'none'
+                GROUP BY sj."wishId",
+                          sj."joinedAt",
+                          sj."userId",
+                          ss."schemaType")
+              GROUP BY "wishId",
+                      "joinedAt",
+                      "userId")
+          GROUP BY "wishId"),
+        SCHEMA AS
+          (SELECT "wishId",
+                  t.schema->'participation' AS participationConfirmSchema,
+                  t.schema->'post' AS postConfirmSchema
+          FROM
+            (SELECT "wishId",
+                    jsonb_object_agg("schemaType", SCHEMA) AS SCHEMA
+              FROM
+                (SELECT ss."wishId",
+                        ss."schemaType",
+                        json_agg(json_build_object('type', CASE
+                                                              WHEN ss."schemaType" = 'participation' THEN sw."participationConfirmSchemaType"
+                                                              ELSE sw."postConfirmSchemaType"
+                                                          END, ss."type" || 'Label', ss."label", ss."type" || 'Required', ss."required")) AS SCHEMA
+                FROM public.shitai_wish AS sw
+                INNER JOIN shitai_schema AS ss ON ss."wishId" = sw.id
+                WHERE EXISTS
+                    (SELECT id
+                      FROM wish
+                      WHERE id = sw.id)
+                GROUP BY ss."wishId",
+                          ss."schemaType")
+              GROUP BY "wishId") t)
+        SELECT wish.*,
+              schema.participationConfirmSchema AS "participationConfirmSchema",
+              schema.postConfirmSchema AS "postConfirmSchema",
+              answers.participants
+        FROM wish
+        INNER JOIN SCHEMA ON schema."wishId" = wish.id
+        LEFT JOIN answers ON schema."wishId" = answers."wishId";`,
         [groupId]
       );
       if (wishRows.length === 0) {
@@ -1210,7 +1276,7 @@ export class NeonApi {
           createdAt: "",
         };
         //console.log(wish["id"], wish);
-        const res = await this.createResponseData(wish.id);
+        // const res = await this.createResponseData(wish.id);
         let extColumns = this.columns.filter(
           (col) =>
             col !== '"participationConfirmSchemaType"' &&
@@ -1231,11 +1297,13 @@ export class NeonApi {
             "participants",
           ] as const
         ).forEach((column) => {
-          if (res && column in res) {
-            resWish = {
-              ...resWish,
-              [column]: res[column],
-            };
+          if (wish && column in wish) {
+            if (wish[column]) {
+              resWish = {
+                ...resWish,
+                [column]: wish[column],
+              };
+            }
           }
         });
         response.push(resWish);
