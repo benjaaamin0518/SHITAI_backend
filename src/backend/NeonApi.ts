@@ -1214,7 +1214,6 @@ export class NeonApi {
                     (SELECT id
                       FROM wish
                       WHERE id = sj."wishId")
-                  AND ss.type <> 'none'
                 GROUP BY sj."wishId",
                           sj."joinedAt",
                           sj."userId",
@@ -1252,7 +1251,8 @@ export class NeonApi {
               answers.participants
         FROM wish
         INNER JOIN SCHEMA ON schema."wishId" = wish.id
-        LEFT JOIN answers ON schema."wishId" = answers."wishId";`,
+        LEFT JOIN answers ON schema."wishId" = answers."wishId"
+        ORDER BY id ASC;`,
         [groupId]
       );
       if (wishRows.length === 0) {
