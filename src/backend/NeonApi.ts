@@ -160,7 +160,7 @@ export class NeonApi {
 
     // 作成したハッシュ値をアクセストークンとしてsupabaseの任意のレコードに格納する。
     const { rows: updateRows } = await this.pool.query(
-      "UPDATE shitai_user_info SET access_token = $1, refresh_token = $2 WHERE user_id = $3 RETURNING id",
+      "UPDATE shitai_user_info SET access_token = (ARRAY[$1] || access_token)[1:3], refresh_token = $2 WHERE user_id = $3 RETURNING id",
       [accessToken, refreshToken, userId]
     );
     if (updateRows.length === 0)
@@ -215,7 +215,7 @@ export class NeonApi {
         `SELECT *
              FROM shitai_user_info
              WHERE id = $1
-               AND access_token = $2;`,
+               AND $2 = ANY(access_token);`,
         [id, decodedAccessToken]
       );
       if (rows.length === 0) {
@@ -273,7 +273,7 @@ export class NeonApi {
     } = this.createTokens(userId);
     // 作成したハッシュ値をアクセストークンとしてsupabaseの任意のレコードに格納する。
     const { rows: updateRows } = await this.pool.query(
-      "UPDATE shitai_user_info SET access_token = $1, refresh_token = $2 WHERE id = $3 RETURNING id",
+      "UPDATE shitai_user_info SET access_token = (ARRAY[$1] || access_token)[1:3], refresh_token = $2 WHERE id = $3 RETURNING id",
       [newAccessToken, newRefreshToken, userId]
     );
     if (updateRows.length === 0) {
