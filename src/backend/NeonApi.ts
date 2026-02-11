@@ -107,7 +107,7 @@ export class NeonApi {
     response.accessToken = jwt.sign(
       defaultPeyload,
       this.salt || "",
-      this.config
+      this.config,
     );
     response.refreshToken = jwt.sign(refreshPeyload, this.salt || "", {
       ...this.config,
@@ -161,7 +161,7 @@ export class NeonApi {
     // 作成したハッシュ値をアクセストークンとしてsupabaseの任意のレコードに格納する。
     const { rows: updateRows } = await this.pool.query(
       "UPDATE shitai_user_info SET access_token = (ARRAY[$1] || access_token)[1:3], refresh_token = $2 WHERE user_id = $3 RETURNING id",
-      [accessToken, refreshToken, userId]
+      [accessToken, refreshToken, userId],
     );
     if (updateRows.length === 0)
       throw { message: "ログイン認証に失敗しました。" };
@@ -216,7 +216,7 @@ export class NeonApi {
              FROM shitai_user_info
              WHERE id = $1
                AND $2 = ANY(access_token);`,
-        [id, decodedAccessToken]
+        [id, decodedAccessToken],
       );
       if (rows.length === 0) {
         response = "error";
@@ -247,7 +247,7 @@ export class NeonApi {
       | { id: string; accessToken: string; refreshToken: string } = "error";
     let { id, refreshToken: decodedRefreshToken } = jwt.verify(
       refreshToken,
-      this.salt || ""
+      this.salt || "",
     ) as {
       id: string;
       refreshToken: string;
@@ -259,7 +259,7 @@ export class NeonApi {
              FROM shitai_user_info
              WHERE id = $1
                AND refresh_token = $2;`,
-      [id, decodedRefreshToken]
+      [id, decodedRefreshToken],
     );
     if (rows.length === 0) {
       response = "error";
@@ -274,7 +274,7 @@ export class NeonApi {
     // 作成したハッシュ値をアクセストークンとしてsupabaseの任意のレコードに格納する。
     const { rows: updateRows } = await this.pool.query(
       "UPDATE shitai_user_info SET access_token = (ARRAY[$1] || access_token)[1:3], refresh_token = $2 WHERE id = $3 RETURNING id",
-      [newAccessToken, newRefreshToken, userId]
+      [newAccessToken, newRefreshToken, userId],
     );
     if (updateRows.length === 0) {
       response = "error";
@@ -323,7 +323,7 @@ export class NeonApi {
       const buffer = Buffer.from(base64Data, "base64");
 
       const file = bucket.file(
-        uploadPath + "." + contentType.replace("image/", "")
+        uploadPath + "." + contentType.replace("image/", ""),
       );
 
       await file.save(buffer, {
@@ -338,7 +338,7 @@ export class NeonApi {
 
       return `https://storage.googleapis.com/${file.cloudStorageURI.href.replace(
         "gs://",
-        ""
+        "",
       )}`;
     };
     return imageData ? await uploadBase64Image(imageData, randomUUID()) : null;
@@ -360,7 +360,7 @@ export class NeonApi {
       const { rows: insertRows } = await this.pool.query(
         `INSERT INTO "public"."shitai_user_info" ("user_id", "password", "user_name")
           VALUES($1, $2, $3) RETURNING id;`,
-        [updateObj.email, hashPassword, updateObj.name]
+        [updateObj.email, hashPassword, updateObj.name],
       );
       if (insertRows.length !== 1) {
         throw {
@@ -389,7 +389,7 @@ export class NeonApi {
   }
   public async insertWish(
     wish: Omit<insertWishRequest, "userInfo">,
-    id: number
+    id: number,
   ) {
     // レスポンス内容(初期値)
     let response = { id: "" };
@@ -401,7 +401,7 @@ export class NeonApi {
       //console.log(leftWish.groupId);
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName" FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg.id = $2;`,
-        [id, leftWish.groupId]
+        [id, leftWish.groupId],
       );
       //console.log(id);
       if (groupRows.length !== 1) {
@@ -438,7 +438,7 @@ export class NeonApi {
           leftWish.implementationDatetime == ""
             ? null
             : leftWish.implementationDatetime,
-        ]
+        ],
       );
       if (insertWishRows.length !== 1) {
         throw {
@@ -448,7 +448,7 @@ export class NeonApi {
 
       const createInsertSchema = (
         schema: ParticipationSchema,
-        schemaType: schemaType
+        schemaType: schemaType,
       ) => {
         let arr: {
           schemaType: schemaType;
@@ -511,7 +511,7 @@ export class NeonApi {
             schema.type,
             schema.required,
             schema.label,
-          ]
+          ],
         );
         if (insertRows.length === 0) {
           throw {
@@ -524,7 +524,7 @@ export class NeonApi {
       const { rows: mailRows } = await this.pool.query(
         `SELECT sui.user_id As mail
         FROM public.shitai_group_join as sgj INNER JOIN shitai_user_info as sui ON sui.id = sgj."userId" WHERE sgj."groupId" = $1;`,
-        [leftWish.groupId]
+        [leftWish.groupId],
       );
       if (mailRows.length === 0) {
         throw {
@@ -537,7 +537,7 @@ export class NeonApi {
       const { rows: userRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail
         FROM shitai_user_info as sui WHERE sui."id" = $1;`,
-        [leftWish.creatorId]
+        [leftWish.creatorId],
       );
       if (userRows.length === 0) {
         throw {
@@ -634,7 +634,7 @@ export class NeonApi {
         await this.sendEmail(
           to,
           `【SHITAI】新しい「したい」が投稿されました — ${leftWish.title}`,
-          html
+          html,
         );
       }
       await this.pool.query("COMMIT");
@@ -649,7 +649,7 @@ export class NeonApi {
       const { rows: schemaRows } = await this.pool.query(
         `SELECT sw."participationConfirmSchemaType", sw."postConfirmSchemaType", ss."schemaType", ss."type", ss."required", ss."label"
         FROM public.shitai_wish as sw INNER JOIN shitai_schema as ss ON ss."wishId" = sw.id WHERE sw.id = $1;`,
-        [wishId]
+        [wishId],
       );
       if (schemaRows.length === 0) {
         throw {
@@ -680,7 +680,7 @@ export class NeonApi {
       const { rows: answerRows } = await this.pool.query(
         `SELECT sj."joinedAt", sj."userId", ss."schemaType", ss.type, sa.value
         FROM shitai_join as sj LEFT JOIN shitai_schema as ss ON ss."wishId" = $1 LEFT JOIN public.shitai_answer as sa ON sa."schemaId" = ss.id AND ss."wishId" = $1 AND sa."userId" = sj."userId" WHERE sj."wishId" = $1 ORDER BY sj."joinedAt" ASC;`,
-        [wishId]
+        [wishId],
       );
       // if (answerRows.length === 0) {
       //   throw {
@@ -740,7 +740,7 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
-        [id, wishId]
+        [id, wishId],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -751,7 +751,7 @@ export class NeonApi {
       const { rows: wishRows } = await this.pool.query(
         `SELECT ${this.columns.join(",")}
         FROM public.shitai_wish WHERE id = $1;`,
-        [wishId]
+        [wishId],
       );
       if (wishRows.length !== 1) {
         throw {
@@ -763,7 +763,7 @@ export class NeonApi {
       let extColumns = this.columns.filter(
         (col) =>
           col !== '"participationConfirmSchemaType"' &&
-          col !== '"postConfirmSchemaType"'
+          col !== '"postConfirmSchemaType"',
       );
       extColumns.forEach((column) => {
         const repColumn = column.replaceAll('"', "");
@@ -795,7 +795,7 @@ export class NeonApi {
   public async insertAnswer(
     answer: Omit<insertAnswerRequest, "userInfo">,
     id: number,
-    wishId: number
+    wishId: number,
   ) {
     // レスポンス内容(初期値)
     let response: "success" | "error" = "success";
@@ -803,7 +803,7 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
-        [id, wishId]
+        [id, wishId],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -814,7 +814,7 @@ export class NeonApi {
       const answers: { schemaId: string; value: string }[] = [];
       for (const key of Object.keys(answer)) {
         for (const schema of Object.keys(
-          answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer
+          answer[key as keyof Omit<insertAnswerRequest, "userInfo">] as answer,
         )) {
           const repKey = key.replace("Answers", "");
           const value = (
@@ -823,7 +823,7 @@ export class NeonApi {
           if (!value || value == "") continue;
           const { rows: insertAnswerRows } = await this.pool.query(
             `INSERT INTO public.shitai_answer ("userId", "schemaId", "value") SELECT $1, ss.id, $2 FROM public.shitai_schema as ss WHERE ss."schemaType" = $3 AND ss."type" = $4 AND ss."wishId" = $5 LIMIT 1 RETURNING id, "schemaId", "value"`,
-            [id, value, repKey, schema, wishId]
+            [id, value, repKey, schema, wishId],
           );
           if (insertAnswerRows.length !== 1) {
             throw {
@@ -840,7 +840,7 @@ export class NeonApi {
       const { rows: userRows } = await this.pool.query(
         `SELECT sui.user_id As mail
         FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
-        [wishId]
+        [wishId],
       );
       if (userRows.length === 0) {
         throw {
@@ -854,7 +854,7 @@ export class NeonApi {
       const { rows: joinUserRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail
         FROM shitai_user_info as sui WHERE sui."id" = $1;`,
-        [id]
+        [id],
       );
       if (userRows.length === 0) {
         throw {
@@ -865,7 +865,7 @@ export class NeonApi {
       const { rows: creatorUserRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail, sw.title
         FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
-        [wishId]
+        [wishId],
       );
       if (creatorUserRows.length === 0) {
         throw {
@@ -890,7 +890,7 @@ export class NeonApi {
         const { rows: schemaRows } = await this.pool.query(
           `SELECT ss."schemaType", ss."type", ss."required", ss."label"
         FROM shitai_schema as ss WHERE ss.id = $1;`,
-          [answer.schemaId]
+          [answer.schemaId],
         );
         if (schemaRows.length !== 1) {
           throw {
@@ -969,7 +969,7 @@ export class NeonApi {
         await this.sendEmail(
           to,
           `【SHITAI】参加者が入力しました — ${title}（${joinUserName}）`,
-          html
+          html,
         );
       }
       await this.pool.query("COMMIT");
@@ -981,15 +981,15 @@ export class NeonApi {
   }
   public async updateWish(
     wish: Omit<updateWishRequest, "userInfo">,
-    id: number
-  ) {
+    id: number,
+  ): Promise<"success" | "error"> {
     // レスポンス内容(初期値)
     let response: "success" | "error" = "success";
     await this.pool.query("BEGIN");
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
-        [id, wish.id]
+        [id, wish.id],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -1015,58 +1015,50 @@ export class NeonApi {
               ] == ""
                 ? "NULL"
                 : current == "imageData"
-                ? imageData
-                  ? "'" + imageData + "'"
-                  : "NULL"
-                : "'" +
-                  updateWish[
-                    current as keyof Omit<updateWishRequest, "userInfo" | "id">
-                  ] +
-                  "'";
+                  ? imageData
+                    ? "'" + imageData + "'"
+                    : "NULL"
+                  : "'" +
+                    updateWish[
+                      current as keyof Omit<
+                        updateWishRequest,
+                        "userInfo" | "id"
+                      >
+                    ] +
+                    "'";
             const str = `"${current}"` + " = " + `${value}`;
             //console.log("-----------------------", str);
 
             return prev !== "" ? prev + ", " + str : str;
           },
-          ""
+          "",
         )} WHERE id = $1 RETURNING id;`,
-        [wish.id]
+        [wish.id],
       );
       if (updateRows.length === 0) {
         throw {
           message: "したいことの更新に失敗しました。",
         };
       }
+      await this.pool.query("COMMIT");
+
       // 既存参加者情報取得
       const { rows: userRows } = await this.pool.query(
         `SELECT sui.user_id As mail
         FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
-        [wishId]
+        [wishId],
       );
       if (userRows.length === 0) {
-        throw {
-          message: "既存参加者情報の取得に失敗しました。",
-        };
+        return response;
       }
 
       const groupName = groupRows[0]["groupName"];
 
-      // 参加者情報取得
-      const { rows: joinUserRows } = await this.pool.query(
-        `SELECT sui.user_name As name, sui.user_id As mail
-        FROM shitai_user_info as sui WHERE sui."id" = $1;`,
-        [id]
-      );
-      if (userRows.length === 0) {
-        throw {
-          message: "参加者情報の取得に失敗しました。",
-        };
-      }
       // 作成者情報取得
       const { rows: creatorUserRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail, sw.title
         FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
-        [wishId]
+        [wishId],
       );
       if (creatorUserRows.length === 0) {
         throw {
@@ -1160,10 +1152,9 @@ export class NeonApi {
         await this.sendEmail(
           to,
           `【SHITAI】「したい」が更新されました — ${title}`,
-          html
+          html,
         );
       }
-      await this.pool.query("COMMIT");
     } catch (e) {
       await this.pool.query("ROLLBACK");
       throw e;
@@ -1176,7 +1167,7 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id FROM public.shitai_group as sg INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sg."id" = $2;`,
-        [id, groupId]
+        [id, groupId],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -1253,7 +1244,7 @@ export class NeonApi {
         INNER JOIN SCHEMA ON schema."wishId" = wish.id
         LEFT JOIN answers ON schema."wishId" = answers."wishId"
         ORDER BY id ASC;`,
-        [groupId]
+        [groupId],
       );
       if (wishRows.length === 0) {
         throw {
@@ -1280,7 +1271,7 @@ export class NeonApi {
         let extColumns = this.columns.filter(
           (col) =>
             col !== '"participationConfirmSchemaType"' &&
-            col !== '"postConfirmSchemaType"'
+            col !== '"postConfirmSchemaType"',
         );
         extColumns.forEach((column) => {
           const repColumn = column.replaceAll('"', "");
@@ -1320,7 +1311,7 @@ export class NeonApi {
       const { rows: joinGroupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName"
         FROM public.shitai_group_join as sgj INNER JOIN shitai_group as sg ON sg.id = sgj."groupId" WHERE sgj."userId" = $1 ORDER BY sg.id ASC;`,
-        [id]
+        [id],
       );
       if (joinGroupRows.length === 0) {
         throw {
@@ -1337,7 +1328,7 @@ export class NeonApi {
         const { rows: joinMemberRows } = await this.pool.query(
           `SELECT DISTINCT sui.id, sui.user_name, sui.user_id
         FROM public.shitai_group_join as sgj INNER JOIN shitai_user_info as sui ON sui.id = sgj."userId" WHERE sgj."groupId" = $1;`,
-          [group["id"]]
+          [group["id"]],
         );
         if (joinMemberRows.length === 0) {
           throw {
@@ -1360,7 +1351,7 @@ export class NeonApi {
   }
   public async insertGroup(
     id: number,
-    group: Omit<insertGroupRequest, "userInfo">
+    group: Omit<insertGroupRequest, "userInfo">,
   ) {
     // レスポンス内容(初期値)
     let response = { id: "" };
@@ -1370,7 +1361,7 @@ export class NeonApi {
       const { rows: insertRows } = await this.pool.query(
         `INSERT INTO shitai_group ("groupName")
           VALUES($1) RETURNING id;`,
-        [group.name]
+        [group.name],
       );
       if (insertRows.length !== 1) {
         throw {
@@ -1380,7 +1371,7 @@ export class NeonApi {
       const { rows: insertJoinRows } = await this.pool.query(
         `INSERT INTO shitai_group_join ("groupId", "userId")
           VALUES($1, $2) RETURNING id;`,
-        [insertRows[0]["id"], id]
+        [insertRows[0]["id"], id],
       );
       if (insertJoinRows.length !== 1) {
         throw {
@@ -1397,7 +1388,7 @@ export class NeonApi {
   }
   public async invitationGroup(
     id: number,
-    { invitationUserId, groupId }: Omit<invitationGroupRequest, "userInfo">
+    { invitationUserId, groupId }: Omit<invitationGroupRequest, "userInfo">,
   ) {
     // レスポンス内容(初期値)
     let response: "success" | "error" = "success";
@@ -1405,7 +1396,7 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sjg.id FROM public.shitai_group_join as sjg WHERE sjg."groupId" = $2 AND sjg."userId" = $1;`,
-        [id, groupId]
+        [id, groupId],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -1415,7 +1406,7 @@ export class NeonApi {
       // いんんさーとを行う
       const { rows: userRows } = await this.pool.query(
         `SELECT id FROM shitai_user_info WHERE user_id = $1`,
-        [invitationUserId]
+        [invitationUserId],
       );
       if (userRows.length !== 1) {
         throw {
@@ -1424,7 +1415,7 @@ export class NeonApi {
       }
       const { rows: newGroupRows } = await this.pool.query(
         `SELECT id FROM shitai_group_join WHERE "userId" = $1 AND "groupId" = $2`,
-        [userRows[0]["id"], groupId]
+        [userRows[0]["id"], groupId],
       );
       if (newGroupRows.length !== 0) {
         throw {
@@ -1433,7 +1424,7 @@ export class NeonApi {
       }
       const { rows: insertRows } = await this.pool.query(
         `INSERT INTO shitai_group_join ("groupId", "userId") VALUES ($1, $2) RETURNING id;`,
-        [groupId, userRows[0]["id"]]
+        [groupId, userRows[0]["id"]],
       );
       if (insertRows.length !== 1) {
         throw {
@@ -1449,7 +1440,7 @@ export class NeonApi {
   }
   public async joinWish(
     id: number,
-    { wishId }: Omit<joinWishRequest, "userInfo">
+    { wishId }: Omit<joinWishRequest, "userInfo">,
   ) {
     // レスポンス内容(初期値)
     let response: "success" | "error" = "success";
@@ -1457,7 +1448,7 @@ export class NeonApi {
     try {
       const { rows: groupRows } = await this.pool.query(
         `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
-        [id, wishId]
+        [id, wishId],
       );
       if (groupRows.length !== 1) {
         throw {
@@ -1466,7 +1457,7 @@ export class NeonApi {
       }
       const { rows: wishRows } = await this.pool.query(
         `SELECT id FROM shitai_join WHERE "userId" = $1 AND "wishId" = $2;`,
-        [id, wishId]
+        [id, wishId],
       );
       if (wishRows.length !== 0) {
         throw {
@@ -1476,7 +1467,7 @@ export class NeonApi {
       // いんんさーとを行う
       const { rows: joinWishRows } = await this.pool.query(
         `INSERT INTO shitai_join ("userId", "joinedAt", "wishId") VALUES ($1, NOW(), $2) RETURNING id`,
-        [id, wishId]
+        [id, wishId],
       );
       if (joinWishRows.length !== 1) {
         throw {
@@ -1488,7 +1479,7 @@ export class NeonApi {
       const { rows: userRows } = await this.pool.query(
         `SELECT sui.user_id As mail
         FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
-        [wishId]
+        [wishId],
       );
       if (userRows.length === 0) {
         throw {
@@ -1502,7 +1493,7 @@ export class NeonApi {
       const { rows: joinUserRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail
         FROM shitai_user_info as sui WHERE sui."id" = $1;`,
-        [id]
+        [id],
       );
       if (userRows.length === 0) {
         throw {
@@ -1513,7 +1504,7 @@ export class NeonApi {
       const { rows: creatorUserRows } = await this.pool.query(
         `SELECT sui.user_name As name, sui.user_id As mail, sw.title
         FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
-        [wishId]
+        [wishId],
       );
       if (creatorUserRows.length === 0) {
         throw {
@@ -1588,7 +1579,7 @@ export class NeonApi {
         await this.sendEmail(
           to,
           `【SHITAI】ユーザーが参加しました — ${title}（${joinUserName}）`,
-          html
+          html,
         );
       }
 
