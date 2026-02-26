@@ -25,6 +25,8 @@ import {
   Wish,
   invitationGroupRequest,
   joinWishRequest,
+  Comment,
+  postCommentRequest,
 } from "../type/NeonApiInterface";
 import { createHash, randomBytes } from "crypto";
 import * as jwt from "jsonwebtoken";
@@ -739,7 +741,7 @@ export class NeonApi {
     };
     try {
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
         [id, wishId],
       );
       if (groupRows.length !== 1) {
@@ -1301,6 +1303,196 @@ export class NeonApi {
       }
       return response;
     } catch (e) {
+      throw e;
+    }
+  }
+  public async getComments(wishId: number, id: number) {
+    // レスポンス内容(初期値)
+    let response: Comment[] = [];
+    try {
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        [id, wishId],
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+
+      const { rows: commentRows } = await this.pool.query(
+        `SELECT id, "wishId", "userId", "userName", text, quote, "createdAt", "quoteAbsoluteStart", "quoteAbsoluteEnd" FROM public.shitai_comment WHERE "wishId" = $1 ORDER BY id DESC;`,
+        [wishId],
+      );
+      if (commentRows.length === 0) return response;
+
+      response = commentRows.map((row: any) => ({
+        id: String(row.id),
+        wishId: row.wishId ? String(row.wishId) : undefined,
+        userId: String(row.userId),
+        userName: row.userName || "",
+        text: row.text,
+        quote: row.quote || undefined,
+        createdAt: row.createdAt,
+        quoteAbsoluteStart: row.quoteAbsoluteStart || undefined,
+        quoteAbsoluteEnd: row.quoteAbsoluteEnd || undefined,
+      }));
+
+      return response;
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  public async postComment(
+    comment: Omit<postCommentRequest, "userInfo">,
+    id: number,
+  ) {
+    let response: Comment | null = null;
+    await this.pool.query("BEGIN");
+    try {
+      const { wishId, text, quote, quoteAbsoluteStart, quoteAbsoluteEnd } =
+        comment;
+      const { rows: groupRows } = await this.pool.query(
+        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        [id, wishId],
+      );
+      if (groupRows.length !== 1) {
+        throw {
+          message: "権限がありません。グループ外のユーザーです。",
+        };
+      }
+
+      const { rows: posterRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail FROM shitai_user_info as sui WHERE sui.id = $1;`,
+        [id],
+      );
+      if (posterRows.length === 0) {
+        throw { message: "投稿者情報の取得に失敗しました。" };
+      }
+      const postUserName = posterRows[0]["name"];
+      const postUserMail = posterRows[0]["mail"];
+
+      const { rows: insertRows } = await this.pool.query(
+        `INSERT INTO public.shitai_comment ("wishId", "userId", "userName", text, quote, "quoteAbsoluteStart", "quoteAbsoluteEnd", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id, "wishId", "userId", "userName", text, quote, "quoteAbsoluteStart", "quoteAbsoluteEnd", "createdAt";`,
+        [
+          wishId,
+          id,
+          postUserName,
+          text,
+          quote || null,
+          quoteAbsoluteStart || null,
+          quoteAbsoluteEnd || null,
+        ],
+      );
+      if (insertRows.length !== 1) {
+        throw { message: "コメントの登録に失敗しました。" };
+      }
+      const row = insertRows[0];
+      response = {
+        id: String(row.id),
+        wishId: row.wishId ? String(row.wishId) : undefined,
+        userId: String(row.userId),
+        userName: row.userName || "",
+        text: row.text,
+        quote: row.quote || undefined,
+        createdAt: row.createdAt,
+        quoteAbsoluteStart: row.quoteAbsoluteStart || undefined,
+        quoteAbsoluteEnd: row.quoteAbsoluteEnd || undefined,
+      };
+
+      await this.pool.query("COMMIT");
+
+      // 既存参加者情報取得
+      const { rows: participantRows } = await this.pool.query(
+        `SELECT sui.user_id As mail
+        FROM shitai_join as sj INNER JOIN shitai_user_info as sui ON sui.id = sj."userId" WHERE sj."wishId" = $1;`,
+        [wishId],
+      );
+      // 作成者情報取得
+      const { rows: creatorUserRows } = await this.pool.query(
+        `SELECT sui.user_name As name, sui.user_id As mail, sw.title
+        FROM shitai_wish as sw INNER JOIN shitai_user_info as sui ON sw."creatorId" = sui."id" WHERE sw.id = $1;`,
+        [wishId],
+      );
+      if (creatorUserRows.length === 0) {
+        throw {
+          message: "作成者情報の取得に失敗しました。",
+        };
+      }
+      const creatorName = creatorUserRows[0]["name"];
+      const creatorMail = creatorUserRows[0]["mail"];
+      const title = creatorUserRows[0]["title"];
+
+      // 宛先リスト作成（投稿者以外の既存参加者 + 作成者）
+      const to = participantRows
+        .map((row: any) => row["mail"])
+        .concat(creatorMail)
+        .filter((mail: string) => mail && mail !== postUserMail);
+
+      // メール内容作成
+      const html = `
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>コメントの通知</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Arial, sans-serif; margin:0; padding:0; background:#f6f8fb; color:#111; }
+    .container { max-width:600px; margin:28px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(20,30,60,0.08); }
+    .header { padding:20px; background:#1f6feb; color:#fff; }
+    .content { padding:20px; }
+    .title { font-size:18px; margin:0 0 8px 0; }
+    .meta { font-size:13px; color:#6b7280; margin-bottom:12px; }
+    .card { background:#f7f9fc; padding:14px; border-radius:6px; margin-bottom:16px; }
+    .btn { display:inline-block; padding:12px 18px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .btn-primary { background:#1f6feb; color:#fff; }
+    .footer { font-size:12px; color:#9aa0ab; padding:18px; text-align:center; }
+    pre { white-space:pre-wrap; word-wrap:break-word; }
+  </style>
+</head>
+<body>
+  <div class="container" role="article">
+    <div class="header">
+      <h1 style="font-size:20px;margin:0">SHITAI</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;opacity:0.95">コメントが投稿されました</p>
+    </div>
+
+    <div class="content">
+      <p class="title">💬 ${postUserName} さんがコメントしました — ${title}</p>
+      <p class="meta"><span class="kv">グループ：</span> ${groupRows[0]["groupName"]} </p>
+
+      <div class="card">
+        <p style="margin:0 0 8px 0;"><strong>コメント</strong></p>
+        <pre style="margin:0;">${text}</pre>
+      </div>
+      ${quote ? `<div class="card"><p style="margin:0 0 8px 0;"><strong>引用</strong></p><pre style="margin:0;">${quote}</pre></div>` : ""}
+
+      <p style="margin:0 0 18px 0;">詳細は下のリンクから確認してください。</p>
+
+      <a class="btn btn-primary" href="${process.env.REACT_APP_FRONTEND_URL + "/" + "wish" + "/" + wishId}" target="_blank" rel="noopener">コメントを確認する</a>
+
+      <hr style="border:none;border-top:1px solid #eef2f7;margin:18px 0;" />
+      <p style="margin:0;font-size:13px;color:#556070;">必要であれば投稿者へ返信やリアクションをしてみてください。</p>
+    </div>
+    <div class="footer">このメールは自動配信です。</div>
+  </div>
+</body>
+</html>
+`;
+
+      if (to.length != 0) {
+        await this.sendEmail(
+          to,
+          `【SHITAI】コメントが投稿されました — ${title}（${postUserName}）`,
+          html,
+        );
+      }
+
+      return response;
+    } catch (e) {
+      await this.pool.query("ROLLBACK");
       throw e;
     }
   }

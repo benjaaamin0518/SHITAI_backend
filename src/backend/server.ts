@@ -34,6 +34,10 @@ import {
   joinWishApiResponse,
   invitationGroupApiRequest,
   invitationGroupApiResponse,
+  getCommentsApiRequest,
+  getCommentsApiResponse,
+  postCommentApiRequest,
+  postCommentApiResponse,
 } from "../type/NeonApiInterface";
 const app = express();
 const neonApi = new NeonApi();
@@ -349,6 +353,48 @@ app.post(
       res.status(500).json({
         error: error.message,
         status: 500, // ステータスコード
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/get/comments",
+  async (req: getCommentsApiRequest, res: getCommentsApiResponse) => {
+    try {
+      const { userInfo, wishId } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.getComments(Number(wishId), Number(userId));
+      res.status(200).json({
+        status: 200,
+        result: { comments: result },
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500,
+      });
+      return;
+    }
+  }
+);
+app.post(
+  "/api/v1/post/comment",
+  async (req: postCommentApiRequest, res: postCommentApiResponse) => {
+    try {
+      const { userInfo, ...left } = req.body;
+      const { id: userId } = await initAccessTokenAuth(userInfo);
+      const result = await neonApi.postComment(left, Number(userId));
+      res.status(200).json({
+        status: 200,
+        result: { comment: result },
+      });
+      return;
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message,
+        status: 500,
       });
       return;
     }
