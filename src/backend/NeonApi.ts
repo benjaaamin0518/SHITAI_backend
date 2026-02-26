@@ -1319,7 +1319,7 @@ export class NeonApi {
           message: "権限がありません。グループ外のユーザーです。",
         };
       }
-
+      console.log(groupRows);
       const { rows: commentRows } = await this.pool.query(
         `SELECT id, "wishId", "userId", "userName", text, quote, "createdAt", "quoteAbsoluteStart", "quoteAbsoluteEnd" FROM public.shitai_comment WHERE "wishId" = $1 ORDER BY id DESC;`,
         [wishId],
@@ -1354,7 +1354,7 @@ export class NeonApi {
       const { wishId, text, quote, quoteAbsoluteStart, quoteAbsoluteEnd } =
         comment;
       const { rows: groupRows } = await this.pool.query(
-        `SELECT sg.id FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
+        `SELECT sg.id, sg."groupName" FROM public.shitai_wish as sw INNER JOIN public.shitai_group as sg ON sw."groupId" = sg.id INNER JOIN public.shitai_group_join as sjg ON sjg."groupId" = sg.id AND sjg."userId" = $1 WHERE sw.id = $2;`,
         [id, wishId],
       );
       if (groupRows.length !== 1) {
